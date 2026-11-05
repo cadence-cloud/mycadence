@@ -1,9 +1,22 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+/**
+ * Approximation of the Cadence logo from the 2026 brand guidelines (three overlapping
+ * circles + "cadence."). Always black or white via currentColor. Replace with the
+ * official SVG when available.
+ */
 export function Wordmark({ className = "" }: { className?: string }) {
-  // Text wordmark only — no official logo is invented.
-  return <span className={`font-semibold tracking-[0.14em] uppercase ${className}`}>Cadence</span>;
+  return (
+    <span className={`inline-flex items-center gap-2 ${className}`} aria-label="cadence.">
+      <svg viewBox="-84 -88 168 158" aria-hidden width="26" height="24" fill="none" stroke="currentColor" strokeWidth="7">
+        <circle cx="0" cy="-33" r="50" />
+        <circle cx="-30" cy="16" r="50" />
+        <circle cx="30" cy="16" r="50" />
+      </svg>
+      <span className="font-semibold lowercase tracking-tight">cadence.</span>
+    </span>
+  );
 }
 
 export function Card({ children, className = "", as: As = "section" }: { children: ReactNode; className?: string; as?: "section" | "div" | "article" }) {

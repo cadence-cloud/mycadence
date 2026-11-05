@@ -1,38 +1,41 @@
 @import "tailwindcss";
 
-/* Provisional palette — not the established Cadence brand. */
+/* Cadence Brand Guidelines 2026: Black #000000, White #FFFFFF, Meyer's Navy #005596 (CTAs, links, dividers),
+   Rain Water #ADC9E3 (light backgrounds, cards, highlights), Slate Blue #6B8EAD (secondary UI, diagrams).
+   Token names are historical: "pine" = navy scale, "lime" = Rain Water / Slate Blue. */
 @theme {
-  --color-pine-950: #0c261f;
-  --color-pine-900: #12352b;
-  --color-pine-800: #184437;
-  --color-pine-700: #1f5545;
-  --color-pine-600: #2c6b58;
-  --color-pine-200: #c6d8cf;
-  --color-pine-100: #e2ebe6;
-  --color-pine-50: #eff5f1;
-  --color-lime-200: #e6f2bd;
-  --color-lime-300: #d6ea8f;
-  --color-lime-400: #c5e063;
-  --color-lime-600: #7f9a2a;
-  --color-paper: #faf8f3;
-  --color-sand-50: #f6f3ec;
-  --color-sand-100: #efebe1;
-  --color-sand-200: #e4ded0;
-  --color-sand-300: #d3cbb9;
-  --color-ink: #20221e;
-  --color-muted: #5c6058;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-pine-950: #002a4b;
+  --color-pine-900: #005596;
+  --color-pine-800: #00477e;
+  --color-pine-700: #005596;
+  --color-pine-600: #1d6aa8;
+  --color-pine-200: #adc9e3;
+  --color-pine-100: #dbe8f4;
+  --color-pine-50: #eef4fa;
+  --color-lime-200: #dbe8f4;
+  --color-lime-300: #adc9e3;
+  --color-lime-400: #adc9e3;
+  --color-lime-600: #6b8ead;
+  --color-paper: #f7f9fb;
+  --color-sand-50: #f2f6f9;
+  --color-sand-100: #e9eff5;
+  --color-sand-200: #dce4ed;
+  --color-sand-300: #c3d0dd;
+  --color-ink: #111417;
+  --color-muted: #56616c;
+  /* Kollektif (brand headline face) is not bundled yet; Montserrat is the brand body face. */
+  --font-sans: "Montserrat", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
 html { -webkit-text-size-adjust: 100%; }
 body { background: var(--color-paper); color: var(--color-ink); }
-:focus-visible { outline: 3px solid var(--color-lime-400); outline-offset: 2px; border-radius: 6px; }
+:focus-visible { outline: 3px solid var(--color-pine-900); outline-offset: 2px; border-radius: 6px; }
 input, select, textarea { font-size: 16px; } /* prevents iOS zoom on focus */
 
 @utility card { @apply rounded-2xl border border-sand-200 bg-white; }
 @utility btn { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50; }
 @utility btn-primary { @apply btn bg-pine-900 text-white hover:bg-pine-800; }
-@utility btn-secondary { @apply btn border border-sand-300 bg-white text-ink hover:bg-sand-50; }
+@utility btn-secondary { @apply btn border border-black bg-white text-ink hover:bg-sand-50; }
 @utility btn-ghost { @apply btn text-pine-800 hover:bg-pine-50; }
 @utility btn-danger { @apply btn border border-red-200 bg-white text-red-800 hover:bg-red-50; }
 @utility btn-sm { @apply min-h-9 rounded-lg px-3 text-sm; }

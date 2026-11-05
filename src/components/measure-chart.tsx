@@ -3,11 +3,11 @@ import { useState } from "react";
 import { formatDate } from "@/lib/time";
 
 /**
- * Single-series measure over time. One hue (validated: #2e8b57 on white),
+ * Single-series measure over time. One hue (brand navy),
  * 2px line, 8px markers with a surface ring, recessive axis, per-point hover.
  * Values are only what was recorded — no trend lines, projections, or targets.
  */
-const SERIES = "#2e8b57";
+const SERIES = "#005596"; // brand navy
 
 export function MeasureChart({ points, unit, label }: { points: { date: string; value: number }[]; unit: string; label: string }) {
   const [hover, setHover] = useState<number | null>(null);

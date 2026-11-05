@@ -72,7 +72,7 @@ function TrackRow({ assignmentId, date, entry, name }: { assignmentId: string; d
               disabled={pending}
               aria-pressed={on}
               onClick={() => (on ? start(async () => { await clearCompletion({ assignmentId, date }); router.refresh(); }) : submit(s))}
-              className={`min-h-11 rounded-xl border text-sm font-semibold transition-colors ${on ? (s === "completed" ? "border-pine-800 bg-pine-900 text-white" : s === "partial" ? "border-amber-500 bg-amber-100 text-amber-950" : "border-sand-300 bg-sand-200 text-ink") : "border-sand-300 bg-white text-ink hover:bg-sand-50"}`}
+              className={`min-h-11 whitespace-nowrap rounded-xl border px-1 text-[13px] font-semibold transition-colors ${on ? (s === "completed" ? "border-pine-800 bg-pine-900 text-white" : s === "partial" ? "border-amber-500 bg-amber-100 text-amber-950" : "border-sand-300 bg-sand-200 text-ink") : "border-sand-300 bg-white text-ink hover:bg-sand-50"}`}
             >
               {on && "✓ "}
               {LABELS[s]}

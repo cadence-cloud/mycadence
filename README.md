@@ -43,7 +43,7 @@ Stop the dev server before running `npm run setup` / `npm run db:reset` again: t
 | App | **Next.js 15 (App Router) + TypeScript** | One codebase for server-rendered pages, server actions and API routes; server-side authorization lives next to the data access. Mobile web, no native apps. |
 | Database | **PostgreSQL via Drizzle ORM**, SQL migrations in `drizzle/` | Relational model with real constraints (unique publish per draft, one visit per patient per day). Locally it runs on **PGlite** (Postgres compiled to WASM) so the demo needs no database server. Set `DATABASE_URL` and the same migrations run on any Postgres. |
 | Files | `StorageProvider` interface, local private-disk adapter | Files are never in `/public`. Every read goes through an authorized route. An S3-compatible adapter is the next step before real use. |
-| Styling | Tailwind CSS v4 | Provisional palette tokens in `src/app/globals.css`. |
+| Styling | Tailwind CSS v4 | Brand tokens from Cadence Brand Guidelines 2026 in `src/app/globals.css`. |
 | Tests | Vitest | Parser rules, plan diffing, authorization, publish safeguards. |
 
 No hosting provider has been chosen. Which vendors are acceptable for patient data is a decision to make with the checklist in `docs/LAUNCH_READINESS.md`, after checking each vendor's current documentation and agreements.
@@ -89,6 +89,8 @@ docs/                        architecture notes and launch-readiness checklist
 
 ## Design notes
 
-- "Cadence" is a text wordmark. No logo was invented. The deep green / warm white / lime palette is **provisional**, not the established brand. njcadencept.com could not be reached from the build environment, so nothing was taken from it.
+- Colors follow the Cadence Brand Guidelines 2026: black and white first, Meyer's Navy (#005596) for primary buttons and links, Rain Water (#ADC9E3) for highlights, Slate Blue (#6B8EAD) for secondary UI. Navigation is black with a white logo.
+- The logo is an SVG approximation of the mark in the guidelines (three overlapping circles + "cadence."), always black or white. Swap in the official SVG when available.
+- Body text uses Montserrat (brand body face). Headlines should use Kollektif, which is not bundled yet; until the font file is added, headings fall back to Montserrat.
 - PT screens favor speed: a dashboard with explicit review states (unread, unreviewed, draft), and an editor that autosaves with conflict detection.
 - Patient screens favor clarity: one plan, plain dosage, "Not specified — ask your PT" instead of guessed values, no scores or streaks.

@@ -17,7 +17,7 @@ export default async function PatientLayout({ children }: { children: React.Reac
       <header className="border-b border-sand-200 bg-white">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-2">
           <div className="flex min-h-11 items-center gap-2">
-            <Wordmark className="text-pine-900" />
+            <Wordmark className="text-black" />
             <span className="text-sm text-muted">My Cadence</span>
           </div>
           <form action="/logout" method="post">

@@ -11,7 +11,7 @@ export default async function LoginPage() {
   return (
     <main className="mx-auto flex min-h-[85dvh] max-w-md flex-col justify-center px-4 py-10">
       <div className="mb-8 text-center">
-        <Wordmark className="text-2xl text-pine-900" />
+        <Wordmark className="text-2xl text-black" />
         <p className="mt-2 text-muted">Sign in to My Cadence</p>
       </div>
       <div className="card p-5 sm:p-6">

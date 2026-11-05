@@ -26,7 +26,7 @@ export default async function DemoPage() {
   const groups = (["pt", "patient", "admin"] as const).map((r) => ({ role: r, list: rows.filter((u) => u.role === r) }));
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      <Wordmark className="text-xl text-pine-900" />
+      <Wordmark className="text-xl text-black" />
       <h1 className="mt-4 text-2xl font-semibold">Demo environment</h1>
       <p className="mt-2 max-w-prose text-muted">
         Every patient here is fictional. Pick an account to see the app from that role. Role switching exists only in the demo
