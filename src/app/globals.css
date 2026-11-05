@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+/* Provisional palette — not the established Cadence brand. */
+@theme {
+  --color-pine-950: #0c261f;
+  --color-pine-900: #12352b;
+  --color-pine-800: #184437;
+  --color-pine-700: #1f5545;
+  --color-pine-600: #2c6b58;
+  --color-pine-200: #c6d8cf;
+  --color-pine-100: #e2ebe6;
+  --color-pine-50: #eff5f1;
+  --color-lime-200: #e6f2bd;
+  --color-lime-300: #d6ea8f;
+  --color-lime-400: #c5e063;
+  --color-lime-600: #7f9a2a;
+  --color-paper: #faf8f3;
+  --color-sand-50: #f6f3ec;
+  --color-sand-100: #efebe1;
+  --color-sand-200: #e4ded0;
+  --color-sand-300: #d3cbb9;
+  --color-ink: #20221e;
+  --color-muted: #5c6058;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+body { background: var(--color-paper); color: var(--color-ink); }
+:focus-visible { outline: 3px solid var(--color-lime-400); outline-offset: 2px; border-radius: 6px; }
+input, select, textarea { font-size: 16px; } /* prevents iOS zoom on focus */
+
+@utility card { @apply rounded-2xl border border-sand-200 bg-white; }
+@utility btn { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50; }
+@utility btn-primary { @apply btn bg-pine-900 text-white hover:bg-pine-800; }
+@utility btn-secondary { @apply btn border border-sand-300 bg-white text-ink hover:bg-sand-50; }
+@utility btn-ghost { @apply btn text-pine-800 hover:bg-pine-50; }
+@utility btn-danger { @apply btn border border-red-200 bg-white text-red-800 hover:bg-red-50; }
+@utility btn-sm { @apply min-h-9 rounded-lg px-3 text-sm; }
+@utility input { @apply block min-h-11 w-full rounded-xl border border-sand-300 bg-white px-3 py-2 text-ink placeholder:text-muted/70 focus:border-pine-600 focus:outline-none focus:ring-2 focus:ring-pine-200; }
+@utility label { @apply mb-1 block text-sm font-semibold text-ink; }
+@utility hint { @apply mt-1 text-sm text-muted; }
+@utility eyebrow { @apply text-xs font-semibold uppercase tracking-wider text-muted; }
+@utility chip { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold; }
