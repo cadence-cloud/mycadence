@@ -32,8 +32,10 @@ export const users = pgTable(
   {
     id: id(),
     email: text("email").notNull(),
-    name: text("name").notNull(),
+    name: text("name").notNull(), // full legal name (admin, superbills)
+    displayName: text("display_name"), // how patients and staff see them, e.g. "Dr. Meg"
     credentials: text("credentials"), // e.g. "DPT" — display only
+    notifyByEmail: boolean("notify_by_email").notNull().default(true),
     role: text("role", { enum: ["admin", "pt", "patient"] }).notNull(),
     passwordHash: text("password_hash"),
     isDemo: boolean("is_demo").notNull().default(false),
@@ -107,6 +109,8 @@ export const visits = pgTable(
     ptUserId: text("pt_user_id").notNull().references(() => users.id),
     visitDate: date("visit_date").notNull(), // clinic-local (America/New_York) calendar date
     kind: text("kind", { enum: ["evaluation", "follow_up", "virtual"] }).notNull().default("follow_up"),
+    source: text("source", { enum: ["manual", "booking"] }).notNull().default("manual"),
+    appointmentId: text("appointment_id"),
     createdBy: text("created_by").notNull().references(() => users.id),
     createdAt: createdAt(),
   },
@@ -326,9 +330,11 @@ export const messageThreads = pgTable(
   {
     id: id(),
     patientId: text("patient_id").notNull().references(() => patients.id),
+    // Opaque token used in reply-to addresses (reply+<token>@…) so email replies land here.
+    replyToken: text("reply_token"),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("thread_patient_uq").on(t.patientId)],
+  (t) => [uniqueIndex("thread_patient_uq").on(t.patientId), uniqueIndex("thread_reply_token_uq").on(t.replyToken)],
 );
 
 export const messages = pgTable(
@@ -339,6 +345,7 @@ export const messages = pgTable(
     senderId: text("sender_id").notNull().references(() => users.id),
     body: text("body").notNull(),
     simulated: boolean("simulated").notNull().default(false),
+    via: text("via", { enum: ["app", "email"] }).notNull().default("app"),
     createdAt: createdAt(),
   },
   (t) => [index("messages_thread_idx").on(t.threadId)],
@@ -365,9 +372,52 @@ export const notificationEvents = pgTable("notification_events", {
   linkPath: text("link_path").notNull(),
   // "simulated" (demo), "not_sent" (no provider configured), "queued", "sent", "failed".
   // Never "delivered": we cannot observe inbox delivery.
-  status: text("status", { enum: ["simulated", "not_sent", "queued", "sent", "failed"] }).notNull(),
+  status: text("status", { enum: ["simulated", "not_sent", "queued", "sent", "failed", "throttled"] }).notNull(),
+  error: text("error"),
   createdAt: createdAt(),
 });
+
+/**
+ * Bookings from the scheduling system (Calendly today). A booking becomes a visit
+ * automatically once its start time passes, unless it was canceled or marked as
+ * a no-show. Only scheduling metadata is stored — never intake answers.
+ */
+export const appointments = pgTable(
+  "appointments",
+  {
+    id: id(),
+    source: text("source", { enum: ["calendly", "google", "manual"] }).notNull(),
+    externalId: text("external_id").notNull(),
+    patientId: text("patient_id").references(() => patients.id),
+    ptUserId: text("pt_user_id").references(() => users.id),
+    inviteeName: text("invitee_name").notNull(),
+    inviteeEmail: text("invitee_email").notNull(),
+    eventName: text("event_name"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    status: text("status", { enum: ["scheduled", "canceled", "no_show"] }).notNull().default("scheduled"),
+    visitId: text("visit_id").references(() => visits.id),
+    simulated: boolean("simulated").notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("appt_source_external_uq").on(t.source, t.externalId), index("appt_starts_idx").on(t.startsAt), index("appt_patient_idx").on(t.patientId)],
+);
+
+/** Receipt log for inbound webhooks (idempotency + troubleshooting). No payloads stored. */
+export const integrationEvents = pgTable(
+  "integration_events",
+  {
+    id: id(),
+    source: text("source").notNull(), // "calendly" | "email"
+    eventKey: text("event_key").notNull(),
+    eventType: text("event_type").notNull(),
+    outcome: text("outcome", { enum: ["processed", "ignored", "rejected", "error"] }).notNull(),
+    detail: text("detail"), // short reason, never clinical text
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("integration_events_key_idx").on(t.source, t.eventKey)],
+);
 
 /** Who did what to which record — deliberately excludes clinical free text. */
 export const auditEvents = pgTable(

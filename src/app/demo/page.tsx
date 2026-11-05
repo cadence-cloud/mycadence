@@ -1,3 +1,4 @@
+import { shownName } from "@/server/names";
 import { notFound } from "next/navigation";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -18,7 +19,7 @@ export default async function DemoPage() {
   if (!isDemo()) notFound();
   const db = await getDb();
   const rows = await db
-    .select({ id: users.id, name: users.name, role: users.role, credentials: users.credentials, sport: patients.sport })
+    .select({ id: users.id, name: shownName, fullName: users.name, role: users.role, credentials: users.credentials, sport: patients.sport })
     .from(users)
     .leftJoin(patients, eq(patients.userId, users.id))
     .where(eq(users.isDemo, true))
@@ -45,8 +46,8 @@ export default async function DemoPage() {
                   <button className="card flex w-full items-center gap-3 p-3 text-left hover:border-pine-600">
                     <Avatar name={u.name} />
                     <span>
-                      <span className="block font-semibold">{u.name}{u.credentials ? `, ${u.credentials}` : ""}</span>
-                      <span className="block text-sm text-muted">{u.sport ?? ROLE_COPY[g.role].label}</span>
+                      <span className="block font-semibold">{u.name}</span>
+                      <span className="block text-sm text-muted">{u.sport ?? (u.name !== u.fullName ? `${u.fullName}${u.credentials ? `, ${u.credentials}` : ""}` : ROLE_COPY[g.role].label)}</span>
                     </span>
                   </button>
                 </form>

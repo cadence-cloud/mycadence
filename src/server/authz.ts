@@ -7,6 +7,7 @@
  *  - admin: operational data (names, assignments, settings, audit metadata).
  *           No clinical content unless separately granted (not supported yet).
  */
+import { shownName } from "@/server/names";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { careAssignments, patients, users } from "@/db/schema";
@@ -19,6 +20,7 @@ export interface AuthUser {
   role: Role;
   credentials: string | null;
   isDemo: boolean;
+  fullName?: string;
 }
 export type AccessPurpose = "clinical" | "operational";
 
@@ -70,7 +72,7 @@ export async function assignedPatientIds(db: Db, staffUserId: string): Promise<s
 /** Active care team for a patient — the only staff who receive that patient's messages. */
 export async function careTeam(db: Db, patientId: string) {
   return db
-    .select({ userId: users.id, name: users.name, credentials: users.credentials, role: careAssignments.role })
+    .select({ userId: users.id, name: shownName, email: users.email, notifyByEmail: users.notifyByEmail, credentials: users.credentials, role: careAssignments.role })
     .from(careAssignments)
     .innerJoin(users, eq(users.id, careAssignments.staffUserId))
     .where(and(eq(careAssignments.patientId, patientId), isNull(careAssignments.endedAt), isNull(users.deactivatedAt)))

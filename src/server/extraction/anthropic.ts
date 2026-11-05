@@ -88,7 +88,7 @@ function verify(source: string, ai: { recap?: string; items?: AiItem[]; runningG
     runningGuidance: running,
     nextMilestone: ai.nextMilestone ?? "",
     reassessNext: ai.reassessNext ?? "",
-    links: (ai.links ?? []).filter((l) => source.includes(l.url)),
+    links: [], // external links are not carried into plans
   };
   for (const i of items) {
     const d = i.dosage;

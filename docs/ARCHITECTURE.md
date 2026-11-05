@@ -4,7 +4,8 @@
 
 | Concept | Table | Notes |
 |---|---|---|
-| **Visit** (an appointment that happened) | `visits` | Unique on (patient, date). Re-opening a visit's update reuses the row, so updates never inflate visit counts. Visits are created only when a PT writes an update; nothing is imported from WebPT. |
+| **Appointment** (a booking) | `appointments` | Synced from Calendly webhooks. Matched to patients by email and to PTs by host email. Unmatched bookings wait in Admin → Integrations. |
+| **Visit** (an appointment that happened) | `visits` | Created automatically when a booked appointment's start time passes (`source = booking`), or by a PT for an unbooked visit. Unique on (patient, date), so re-opening an update or a duplicate booking never inflates visit counts. "Didn't happen" removes an empty auto-created visit. |
 | **Draft** (work in progress) | `plan_drafts` | Autosaved. `revision` is an optimistic-lock counter: a save only applies if the client saw the latest revision, otherwise it returns 409 and the editor stops autosaving and asks the PT to reload. One open visit-update draft per visit. |
 | **Published version** (what the patient follows) | `plan_versions` | Immutable JSON snapshot plus a `change_summary`. `version_number` is unique per patient; `draft_id` is unique, so a double-click or retry returns the existing version instead of a duplicate. Publishing checks that no newer version appeared since the draft started (`stale_base`) and asks the PT to confirm. |
 | **Correction** | `plan_drafts.kind = 'correction'` → new `plan_versions` row with `correction_of_version_id` + required note | The corrected version stays in history, labeled "Corrected in vN". Patients see the note. |
@@ -38,6 +39,12 @@ Unauthorized patient URLs return 404 so they don't confirm that a patient exists
 ## Media uploads
 
 Two-step: `POST /api/media` validates type, size, patient, visit and draft, then reserves a `pending` row. `PUT /api/media/:id/content` streams the bytes to a temp file, checks the byte count, and renames atomically before marking the row `ready`. Failed uploads are marked `failed` and can be retried with the same row. Cancel calls `DELETE`, which soft-deletes. Pending and failed files are never shown. Patient footage (`patient_footage`) and general demonstrations (`general_demo`, no patient) are separate categories, and only general demos can be attached to library exercises.
+
+## Integrations
+
+- **Calendly → appointments → visits:** `src/server/scheduling.ts`, webhook at `/api/integrations/calendly`. A booked PT who isn't on the patient's care team is added as covering, so they can document the visit (audited).
+- **Email:** `src/server/email.ts` (SMTP via nodemailer; simulated in demo). Inbound replies: `src/server/inbound-email.ts`, webhook at `/api/integrations/email/inbound`.
+- Google Calendar isn't integrated directly: Calendly is the source of truth and already writes to Google Calendar. If booking moves in-house later, two-way Google Calendar sync becomes part of that work (see `docs/ROADMAP.md`).
 
 ## Messaging and notifications
 

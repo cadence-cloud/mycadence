@@ -169,7 +169,7 @@ export function VisitUpdateEditor(p: Props) {
         if (!it) return false;
         if (f.id.startsWith("dosage") && formatDosage(it.dosage)) return false;
       }
-      if (f.id === "strength-link-missing" && content.links.length) return false;
+      if (f.id === "strength-circuits-ref" && f.severity === "needs_input" && content.items.some((i) => i.circuit)) return false;
       if (f.id === "milestone-not-found" && content.nextMilestone.trim()) return false;
       if (f.id.startsWith("conditional") && f.source && !content.runningGuidance.includes(f.source)) return true;
       return true;
@@ -312,10 +312,6 @@ export function VisitUpdateEditor(p: Props) {
             </details>
           )}
           <textarea id="run-t" className="input min-h-28" value={content.runningGuidance} onChange={(e) => set("runningGuidance", e.target.value)} maxLength={5000} />
-          <div className="mt-4">
-            <p className="label">Strength plan links</p>
-            <LinksEditor links={content.links} onChange={(l) => set("links", l)} />
-          </div>
         </section>
 
         {/* Media */}
@@ -598,22 +594,6 @@ export function AddExercise({ library, onAdd }: { library: Props["library"]; onA
   );
 }
 
-function LinksEditor({ links, onChange }: { links: PlanContent["links"]; onChange: (l: PlanContent["links"]) => void }) {
-  return (
-    <div className="space-y-2">
-      {links.map((l, i) => (
-        <div key={i} className="grid gap-2 sm:grid-cols-[1fr_2fr_auto]">
-          <input aria-label="Link label" className="input" value={l.label} placeholder="Label" onChange={(e) => onChange(links.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} />
-          <input aria-label="Link URL" className="input" value={l.url} placeholder="https://docs.google.com/…" inputMode="url" onChange={(e) => onChange(links.map((x, j) => (j === i ? { ...x, url: e.target.value.trim() } : x)))} />
-          <button type="button" className="btn-ghost btn-sm" onClick={() => onChange(links.filter((_, j) => j !== i))}>Remove</button>
-        </div>
-      ))}
-      <button type="button" className="btn-secondary btn-sm" onClick={() => onChange([...links, { label: "Strength circuits", url: "" }])}>+ Add link</button>
-      <p className="hint">Adding a link does not change who can open the document. Check its sharing settings in Google Docs.</p>
-    </div>
-  );
-}
-
 function PastePanel(props: {
   draftId: string;
   open: boolean;
@@ -671,7 +651,7 @@ function PastePanel(props: {
       {show && (
         <div className="mt-3 space-y-3">
           <p className="text-sm text-muted">
-            We&apos;ll pull out exercises, dosages, cues, running guidance, links and next steps into an editable draft. Missing or unclear details are flagged, never filled in. Nothing is sent to the patient until you publish.
+            We&apos;ll pull out exercises, dosages, cues, running guidance and next steps into an editable draft. Missing or unclear details are flagged, never filled in. Nothing is sent to the patient until you publish.
           </p>
           <p className="text-xs text-muted">
             Method: {props.extraction.ai ? "AI extraction (server-side), checked against your text" : "rule-based parser — no AI, works offline"}.

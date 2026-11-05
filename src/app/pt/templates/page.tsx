@@ -1,3 +1,4 @@
+import { shownName } from "@/server/names";
 import Link from "next/link";
 import { isNull, eq } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -11,7 +12,7 @@ import { formatDateTime } from "@/lib/time";
 export default async function TemplatesPage() {
   await requirePageUser(["pt"]);
   const db = await getDb();
-  const list = await db.select({ t: planTemplates, author: users.name }).from(planTemplates).innerJoin(users, eq(users.id, planTemplates.createdBy)).where(isNull(planTemplates.archivedAt)).orderBy(planTemplates.name);
+  const list = await db.select({ t: planTemplates, author: shownName }).from(planTemplates).innerJoin(users, eq(users.id, planTemplates.createdBy)).where(isNull(planTemplates.archivedAt)).orderBy(planTemplates.name);
   return (
     <div className="space-y-5">
       <div>

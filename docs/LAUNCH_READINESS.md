@@ -54,6 +54,13 @@ My Cadence is a **functional development system that uses synthetic data**. It i
 - [ ] Integrate an approved email/SMS provider (with BAA if it touches PHI, including recipient email addresses linked to a clinic), unsubscribe handling, and bounce tracking.
 - [ ] Patient consent and communication preferences.
 
+## 8b. Calendly and email integrations — Built, needs configuration
+- **Built:** signed Calendly webhooks (HMAC, 5-minute window); idempotent booking sync; only name, email, time and event type stored; integration log without content. Email replies are accepted only from the thread's patient or care team, via an opaque reply token, with quoted history stripped.
+- [ ] Confirm Calendly's HIPAA position and terms directly with Calendly. Booking data (who is seeing a PT, when) is PHI once linked to Cadence.
+- [ ] Choose an email provider that signs a BAA, and configure SPF/DKIM/DMARC for the sending domain. Configure inbound parsing on a dedicated reply subdomain.
+- [ ] Patients' email replies travel through email, outside the app. Tell patients that in the email footer or on signup, and get clinic sign-off on the wording.
+- [ ] Inbound sender addresses can be forged. The provider must verify SPF/DKIM before posting to the webhook, and reject or flag failures.
+
 ## 9. Messaging operations — Partly built
 - **Built:** per-patient thread visible only to the patient and active care team; unread tracking; configurable response expectation and urgent-care guidance shown to patients.
 - [ ] Coverage process when the primary PT is away (who triages the covering queue).

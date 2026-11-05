@@ -1,3 +1,4 @@
+import { shownName } from "@/server/names";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq, gt, isNull } from "drizzle-orm";
@@ -41,7 +42,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!token) return null;
   const db = await getDb();
   const [row] = await db
-    .select({ id: users.id, name: users.name, email: users.email, role: users.role, credentials: users.credentials, isDemo: users.isDemo })
+    .select({ id: users.id, name: shownName, fullName: users.name, email: users.email, role: users.role, credentials: users.credentials, isDemo: users.isDemo })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(and(eq(sessions.tokenHash, sha256(token)), gt(sessions.expiresAt, new Date()), isNull(users.deactivatedAt)))

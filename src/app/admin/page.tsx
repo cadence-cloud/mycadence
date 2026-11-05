@@ -1,10 +1,13 @@
+import { shownName } from "@/server/names";
 import Link from "next/link";
-import { desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { getDb } from "@/db";
-import { auditEvents, careAssignments, notificationEvents, patients, users } from "@/db/schema";
+import { appointments, auditEvents, careAssignments, integrationEvents, notificationEvents, patients, users } from "@/db/schema";
 import { requirePageUser } from "@/server/session";
 import { getSettings, SETTING_DEFAULTS } from "@/server/settings";
-import { addPatient, addStaff, assignStaff, endAssignment, resetPassword, saveSettings, setStaffActive } from "@/app/actions/admin";
+import { addPatient, addStaff, assignStaff, endAssignment, linkBooking, newPatientFromBooking, resetPassword, saveSettings, setStaffActive, simulateBooking, simulateEmailReply } from "@/app/actions/admin";
+import { emailMode, inboundEnabled } from "@/server/email";
+import { localDate } from "@/lib/time";
 import { StaffShell } from "@/components/staff-shell";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/forms";
@@ -14,7 +17,7 @@ import { AdminForm } from "./admin-forms";
 
 export const dynamic = "force-dynamic";
 
-const TABS = ["patients", "staff", "settings", "audit", "notifications"] as const;
+const TABS = ["patients", "integrations", "staff", "settings", "audit"] as const;
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const user = await requirePageUser(["admin"]);
@@ -41,7 +44,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                 {staff.map((s) => (
                   <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                     <div>
-                      <p className="font-semibold">{s.name}{s.credentials ? `, ${s.credentials}` : ""} {s.deactivatedAt && <Badge tone="neutral">Deactivated</Badge>}</p>
+                      <p className="font-semibold">{s.displayName ?? s.name}{s.displayName ? <span className="font-normal text-muted"> · {s.name}{s.credentials ? `, ${s.credentials}` : ""}</span> : s.credentials ? `, ${s.credentials}` : ""} {s.deactivatedAt && <Badge tone="neutral">Deactivated</Badge>}</p>
                       <p className="text-sm text-muted">{s.email} · {s.role === "pt" ? "Physical therapist" : "Admin"}</p>
                     </div>
                     {s.id !== user.id && (
@@ -79,7 +82,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
         {tab === "settings" && <SettingsTab />}
         {tab === "audit" && <AuditTab />}
-        {tab === "notifications" && <NotificationsTab />}
+        {tab === "integrations" && <IntegrationsTab />}
       </div>
     </StaffShell>
   );
@@ -89,7 +92,7 @@ async function PatientsTab({ pts }: { pts: { id: string; name: string }[] }) {
   const db = await getDb();
   const list = await db.select({ id: patients.id, firstName: patients.firstName, lastName: patients.lastName, sport: patients.sport, email: patients.email }).from(patients).where(isNull(patients.archivedAt)).orderBy(patients.lastName);
   const assigns = await db
-    .select({ id: careAssignments.id, patientId: careAssignments.patientId, role: careAssignments.role, name: users.name })
+    .select({ id: careAssignments.id, patientId: careAssignments.patientId, role: careAssignments.role, name: shownName })
     .from(careAssignments)
     .innerJoin(users, eq(users.id, careAssignments.staffUserId))
     .where(isNull(careAssignments.endedAt));
@@ -175,7 +178,7 @@ async function SettingsTab() {
 
 async function AuditTab() {
   const db = await getDb();
-  const rows = await db.select({ a: auditEvents, actor: users.name }).from(auditEvents).leftJoin(users, eq(users.id, auditEvents.actorId)).orderBy(desc(auditEvents.at)).limit(100);
+  const rows = await db.select({ a: auditEvents, actor: shownName }).from(auditEvents).leftJoin(users, eq(users.id, auditEvents.actorId)).orderBy(desc(auditEvents.at)).limit(100);
   return (
     <Card>
       <SectionHeader title="Audit log" eyebrow="Latest 100 events · metadata only, no clinical content" />
@@ -199,23 +202,133 @@ async function AuditTab() {
   );
 }
 
-async function NotificationsTab() {
+async function IntegrationsTab() {
   const db = await getDb();
-  const rows = await db.select({ n: notificationEvents, to: users.name }).from(notificationEvents).innerJoin(users, eq(users.id, notificationEvents.recipientUserId)).orderBy(desc(notificationEvents.createdAt)).limit(50);
+  const demo = isDemo();
+  const base = (process.env.APP_URL || "https://<your-domain>").replace(/\/$/, "");
+  const calendlyOn = !!process.env.CALENDLY_WEBHOOK_SIGNING_KEY;
+  const mode = emailMode();
+  const [unmatched, pts, allPatients, events, outbox] = await Promise.all([
+    db.select().from(appointments).where(and(isNull(appointments.patientId), eq(appointments.status, "scheduled"))).orderBy(appointments.startsAt),
+    db.select({ id: users.id, name: shownName, email: users.email }).from(users).where(and(eq(users.role, "pt"), isNull(users.deactivatedAt))),
+    db.select({ id: patients.id, firstName: patients.firstName, lastName: patients.lastName }).from(patients).where(isNull(patients.archivedAt)).orderBy(patients.lastName, patients.firstName),
+    db.select().from(integrationEvents).orderBy(desc(integrationEvents.receivedAt)).limit(15),
+    db.select({ n: notificationEvents, to: shownName }).from(notificationEvents).innerJoin(users, eq(users.id, notificationEvents.recipientUserId)).orderBy(desc(notificationEvents.createdAt)).limit(25),
+  ]);
+  const today = localDate();
   return (
-    <Card>
-      <SectionHeader title="Notification outbox" eyebrow={isDemo() ? "Demo: nothing is actually sent" : "No email provider is configured"} />
-      <p className="mb-3 text-sm text-muted">Every notification uses the same generic wording and a sign-in link. Status is never shown as “delivered”.</p>
-      <ul className="divide-y divide-sand-200 text-sm">
-        {rows.map(({ n, to }) => (
-          <li key={n.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-            <span><span className="font-semibold">{to}</span> · “{n.subject}” · <code>{n.linkPath.replace(/[0-9a-f-]{36}/g, ":id")}</code></span>
-            <span className="flex items-center gap-2"><Badge tone="neutral">{n.status === "simulated" ? "Simulated" : n.status === "not_sent" ? "Not sent (no provider)" : n.status}</Badge><span className="text-muted">{formatDateTime(n.createdAt)}</span></span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-3 text-xs text-muted"><Link href="/admin?tab=audit" className="underline">Audit log</Link></p>
-    </Card>
+    <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Card>
+          <SectionHeader title="Calendly" eyebrow="Bookings → appointments → visits" />
+          <p className="text-sm">{calendlyOn ? <Badge tone="green">Connected</Badge> : <Badge tone="amber">Not connected</Badge>} {demo && <Badge tone="neutral">Demo bookings are simulated</Badge>}</p>
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted">
+            <li>New bookings and cancellations arrive by webhook and match patients by email and PTs by host email.</li>
+            <li>When an appointment&apos;s start time passes, it becomes a visit automatically. PTs never add visits by hand.</li>
+            <li>Only name, email, time and event type are stored. Intake answers are not imported.</li>
+          </ul>
+          <p className="mt-3 text-sm">Webhook URL: <code className="break-all rounded bg-sand-100 px-1.5 py-0.5">{base}/api/integrations/calendly</code></p>
+          <p className="hint">Create a webhook subscription in Calendly for <code>invitee.created</code> and <code>invitee.canceled</code> with a signing key, then set <code>CALENDLY_WEBHOOK_SIGNING_KEY</code>.</p>
+          {demo && (
+            <details className="mt-4">
+              <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-semibold text-pine-800">Simulate a Calendly booking (demo)</summary>
+              <AdminForm action={simulateBooking} okText="Booking received." className="mt-2 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="label" htmlFor="sb-n">Patient name</label><input id="sb-n" name="name" className="input" defaultValue="Robin Walsh" /></div>
+                  <div><label className="label" htmlFor="sb-e">Patient email</label><input id="sb-e" name="email" type="email" className="input" defaultValue="robin.walsh@demo.cadence.test" /></div>
+                  <div><label className="label" htmlFor="sb-d">Date</label><input id="sb-d" name="date" type="date" className="input" defaultValue={today} /></div>
+                  <div><label className="label" htmlFor="sb-t">Time (ET)</label><input id="sb-t" name="time" type="time" className="input" defaultValue="16:00" /></div>
+                  <div><label className="label" htmlFor="sb-p">With</label><select id="sb-p" name="ptEmail" className="input">{pts.map((p) => <option key={p.id} value={p.email}>{p.name}</option>)}</select></div>
+                  <div><label className="label" htmlFor="sb-ev">Event type</label><select id="sb-ev" name="eventName" className="input"><option>Initial evaluation (75 min)</option><option>Follow-up visit (60 min)</option><option>Virtual check-in (30 min)</option></select></div>
+                </div>
+                <p className="hint">Use an existing patient&apos;s email (e.g. alex@demo.cadence.test) to see it match, or a new one to see it land in the queue below.</p>
+                <button className="btn-primary">Send booking</button>
+              </AdminForm>
+            </details>
+          )}
+        </Card>
+
+        <Card>
+          <SectionHeader title="Email" eyebrow="Notifications and replies" />
+          <p className="text-sm">
+            {mode === "smtp" ? <Badge tone="green">Sending via SMTP</Badge> : mode === "simulated" ? <Badge tone="neutral">Simulated (demo)</Badge> : <Badge tone="amber">No email provider configured</Badge>}{" "}
+            {inboundEnabled() ? <Badge tone="green">Replies by email on</Badge> : <Badge tone="neutral">Replies by email off</Badge>}
+          </p>
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted">
+            <li>PTs are emailed when a patient messages them or submits a check-in. Patients are emailed when a plan is published or a PT replies.</li>
+            <li>Every email says only “You have a new update from Cadence” with a sign-in link. At most one per conversation every 15 minutes.</li>
+            <li>Replying to the email adds the reply to the secure message thread, but only if it comes from that patient&apos;s address or their care team.</li>
+          </ul>
+          <p className="mt-3 text-sm">Inbound webhook: <code className="break-all rounded bg-sand-100 px-1.5 py-0.5">{base}/api/integrations/email/inbound</code></p>
+          {demo && (
+            <details className="mt-4">
+              <summary className="inline-flex min-h-11 cursor-pointer items-center text-sm font-semibold text-pine-800">Simulate a patient replying by email (demo)</summary>
+              <AdminForm action={simulateEmailReply} okText="Reply added to the patient's thread." className="mt-2 space-y-3">
+                <div><label className="label" htmlFor="er-p">From patient</label><select id="er-p" name="patientId" className="input">{allPatients.slice(0, 60).map((p) => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}</select></div>
+                <div><label className="label" htmlFor="er-t">Reply text</label><textarea id="er-t" name="text" className="input min-h-20" defaultValue="Thanks! Is it OK if I swap Thursday's run for the bike this week?" /></div>
+                <button className="btn-primary">Send reply</button>
+              </AdminForm>
+            </details>
+          )}
+        </Card>
+      </div>
+
+      <Card>
+        <SectionHeader title="Bookings that need a patient record" eyebrow="Email didn't match anyone" />
+        {unmatched.length === 0 ? (
+          <p className="text-sm text-muted">Every booking matched a patient.</p>
+        ) : (
+          <ul className="space-y-3">
+            {unmatched.map((a) => (
+              <li key={a.id} className="rounded-xl border border-sand-200 p-3">
+                <p className="font-semibold">{a.inviteeName} <span className="font-normal text-muted">· {a.inviteeEmail}</span></p>
+                <p className="text-sm text-muted">{a.eventName} · {formatDateTime(a.startsAt)}{a.simulated ? " · simulated" : ""}</p>
+                <div className="mt-2 flex flex-wrap items-start gap-3">
+                  <AdminForm action={newPatientFromBooking} className="contents" okText="Patient created.">
+                    <input type="hidden" name="appointmentId" value={a.id} />
+                    <button className="btn-primary btn-sm">Create new patient</button>
+                  </AdminForm>
+                  <AdminForm action={linkBooking} className="flex flex-wrap gap-2" okText="Linked.">
+                    <input type="hidden" name="appointmentId" value={a.id} />
+                    <select name="patientId" aria-label="Existing patient" className="input w-auto">
+                      <option value="">Link to existing patient…</option>
+                      {allPatients.map((p) => <option key={p.id} value={p.id}>{p.lastName}, {p.firstName}</option>)}
+                    </select>
+                    <button className="btn-secondary btn-sm">Link</button>
+                  </AdminForm>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Card>
+          <SectionHeader title="Notification outbox" eyebrow={mode === "simulated" ? "Demo: nothing is actually sent" : undefined} />
+          <ul className="divide-y divide-sand-200 text-sm">
+            {outbox.map(({ n, to }) => (
+              <li key={n.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span><span className="font-semibold">{to}</span> · “{n.subject}”</span>
+                <span className="flex items-center gap-2"><Badge tone="neutral">{({ simulated: "Simulated", not_sent: "Not sent (no provider)", throttled: "Skipped (sent recently)", sent: "Sent to provider", failed: "Failed", queued: "Queued" } as Record<string, string>)[n.status]}</Badge><span className="text-muted">{formatDateTime(n.createdAt)}</span></span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+        <Card>
+          <SectionHeader title="Integration log" eyebrow="Latest 15 · no message or intake content" />
+          {events.length === 0 ? <p className="text-sm text-muted">Nothing received yet.</p> : (
+            <ul className="divide-y divide-sand-200 text-sm">
+              {events.map((e) => (
+                <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <span><code>{e.source}</code> · {e.eventType} · <span className="text-muted">{e.detail}</span></span>
+                  <span className="flex items-center gap-2"><Badge tone={e.outcome === "processed" ? "green" : e.outcome === "rejected" ? "red" : "neutral"}>{e.outcome}</Badge><span className="text-muted">{formatDateTime(e.receivedAt)}</span></span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+    </div>
   );
 }
-

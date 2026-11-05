@@ -2,7 +2,7 @@
 
 A mobile-first web app for **Cadence Physical Therapy**. PTs publish post-visit updates (exercises, running guidance, media, next milestone) faster than writing the current email. Patients get one place to see their plan, log how it went, check in after runs, and message their care team.
 
-It complements WebPT. It does **not** sync with WebPT, process payments, or replace clinical documentation.
+It complements WebPT today. Bookings sync from Calendly, and notifications go out by email. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the plan to replace the rest of the stack (intake, superbills, booking and, eventually, WebPT).
 
 > **Status: development build with fictional data only.** Do not enter real patient information. See [`docs/LAUNCH_READINESS.md`](docs/LAUNCH_READINESS.md) for what has to be verified first.
 
@@ -30,11 +30,12 @@ Stop the dev server before running `npm run setup` / `npm run db:reset` again: t
 
 | Try this | As |
 |---|---|
-| Alex Morgan → **Create visit update** → *Paste existing instructions* → **Insert sample email (demo)** → review flags → publish | Megan Flynn (PT) |
+| Alex Morgan → **Create visit update** → *Paste existing instructions* → **Insert sample email (demo)** → review flags → publish | Dr. Meg (PT) |
 | See the published plan, log exercises, add a run check-in, message the PT | Alex Morgan (patient) |
 | "Today's plan" (a PT set a day-by-day schedule) vs "Current plan" (no schedule) | Sam Rivera vs Alex Morgan |
-| Covering PT access (Sam), and no access to Alex (direct URL → 404) | Giana (PT) |
-| Staff, care-team assignments, response-time and urgent-care text, audit log, simulated notification outbox | Michael Pappalardo (admin) |
+| Covering PT access (Sam), and no access to Alex (direct URL → 404) | Dr. Giana (PT) |
+| Staff, care teams, **Integrations** (simulate a Calendly booking or an email reply, link unmatched bookings), audit log | Michael Pappalardo (admin) |
+| Upcoming / Recently seen / All patients (60+ fictional patients) | Dr. Meg (PT) |
 
 ## Stack and why
 
@@ -68,6 +69,10 @@ No hosting provider has been chosen. Which vendors are acceptable for patient da
 | `STORAGE_DIR` | `./.data/uploads` | Private upload directory. |
 | `EXTRACTION_PROVIDER` | `rules` | `rules` = deterministic parser, no AI, no network. `anthropic` = optional AI extraction (see below). |
 | `ANTHROPIC_API_KEY`, `AI_MODEL` | empty / `claude-sonnet-5-5` | Only used when `EXTRACTION_PROVIDER=anthropic`. |
+| `APP_URL` | `http://localhost:3000` | Used in email links and shown webhook URLs. |
+| `CALENDLY_WEBHOOK_SIGNING_KEY` | empty | Enables `/api/integrations/calendly` (invitee.created / invitee.canceled). |
+| `EMAIL_PROVIDER`, `SMTP_URL`, `EMAIL_FROM` | empty | `smtp` sends real (generic) notification emails. Demo mode never sends. |
+| `EMAIL_REPLY_DOMAIN`, `INBOUND_EMAIL_SECRET` | empty | Replies to notification emails land in the patient's message thread via `/api/integrations/email/inbound`. |
 | `AI_PHI_APPROVED` | `false` | AI extraction is refused in `live` unless this is `true`, which should only be set after the vendor and data handling are approved for patient information. |
 
 ## Where things are

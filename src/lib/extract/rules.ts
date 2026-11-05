@@ -8,7 +8,7 @@
  *    so they can never become an unconditional scheduled progression.
  *  - Running-guidance frequency ("every other day") is never copied onto exercises.
  */
-import type { Dosage, PlanContent, PlanItem, PlanLink, ReviewFlag } from "../plan-types";
+import type { Dosage, PlanContent, PlanItem, ReviewFlag } from "../plan-types";
 
 export interface LibraryRef {
   id: string;
@@ -122,18 +122,16 @@ export function extractWithRules(input: string, library: LibraryRef[] = []): Rul
   const running: string[] = [];
   const reassess: string[] = [];
   const milestone: string[] = [];
-  const links: PlanLink[] = [];
+  const urls: string[] = [];
   const newSentences: string[] = [];
   const libByName = new Map(library.map((l) => [normalizeName(l.name), l]));
 
   const text = input.replace(/\r\n?/g, "\n");
-  // URLs anywhere become links (label from surrounding words), never fetched.
-  for (const line of text.split("\n")) {
-    for (const url of line.match(URL_RE) ?? []) {
-      if (links.some((l) => l.url === url)) continue;
-      const label = /strength|circuit/i.test(line) ? "Strength circuits" : /google/i.test(url) ? "Google Doc" : new URL(url).hostname;
-      links.push({ label, url });
-    }
+  // External links (e.g. Google Docs) are not carried into plans: the plan itself
+  // replaces them. They are flagged so the PT can move that content in.
+  for (const line of text.split("\n")) for (const url of line.match(URL_RE) ?? []) if (!urls.includes(url)) urls.push(url);
+  if (urls.length) {
+    flags.push({ id: "external-links", severity: "check", field: "items", message: `The email contains ${urls.length === 1 ? "a link" : `${urls.length} links`}. Links aren't shown to patients; put that content (e.g. strength circuits) into the plan instead.`, source: urls.join("  ") });
   }
 
   // Group into paragraphs; bullets are handled line by line.
@@ -183,8 +181,8 @@ export function extractWithRules(input: string, library: LibraryRef[] = []): Rul
         }
         continue;
       }
-      if (/strength\s+circuit|google\s+doc/i.test(s) && !links.length) {
-        flags.push({ id: "strength-link-missing", severity: "needs_input", field: "links", message: "The email mentions strength circuits but contains no link. Add the link, or edit the wording.", source: s });
+      if (/strength\s+circuit|google\s+doc/i.test(s)) {
+        flags.push({ id: "strength-circuits-ref", severity: "needs_input", field: "items", message: "The email refers to strength circuits. Strength circuits live in the plan now: add those exercises here and group them under a circuit name.", source: s });
       }
       recap.push(s);
     }
@@ -214,7 +212,7 @@ export function extractWithRules(input: string, library: LibraryRef[] = []): Rul
       runningGuidance: running.join(" "),
       reassessNext: reassess.join(" "),
       nextMilestone: milestone.join(" "),
-      links,
+      links: [],
     },
     flags,
   };

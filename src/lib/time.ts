@@ -38,3 +38,16 @@ export function relativeDay(ymd: string, today = localDate()): string {
   if (ymd === addDays(today, -1)) return "Yesterday";
   return formatDate(ymd, { weekday: "short", month: "short", day: "numeric" });
 }
+
+/** The instant for a clinic-local date + "HH:MM" (handles EST/EDT). */
+export function clinicDateTime(ymd: string, hhmm: string, tz = CLINIC_TZ): Date {
+  const guess = new Date(`${ymd}T${hhmm}:00Z`);
+  const shown = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(guess);
+  const g = (t: string) => Number(shown.find((p) => p.type === t)!.value);
+  const shownUtc = Date.UTC(g("year"), g("month") - 1, g("day"), g("hour"), g("minute"));
+  return new Date(guess.getTime() + (guess.getTime() - shownUtc));
+}
+
+export function formatTime(d: Date, tz = CLINIC_TZ): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }).format(d);
+}

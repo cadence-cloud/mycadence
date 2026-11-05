@@ -28,6 +28,7 @@ export function ExerciseCard({ item, mediaHref, action }: { item: PlanItem; medi
   const freq = frequencyText(item);
   return (
     <article className="rounded-xl border border-sand-200 bg-white p-4">
+      {item.circuit && <p className="eyebrow mb-0.5">{item.circuit}</p>}
       <div className="flex items-start justify-between gap-2">
         <h4 className="font-semibold text-ink">{item.name}</h4>
         {item.isNew && <Badge tone="lime">New</Badge>}
@@ -108,21 +109,6 @@ export function PlanFull({ content, mediaHref }: { content: PlanContent; mediaHr
         <h3 className="eyebrow mb-2">Exercises</h3>
         <PlanItemsView items={content.items} mediaHref={mediaHref} />
       </section>
-      {content.links.length > 0 && (
-        <section>
-          <h3 className="eyebrow mb-1">Links</h3>
-          <ul className="space-y-1">
-            {content.links.map((l) => (
-              <li key={l.url}>
-                <a className="inline-flex min-h-11 items-center font-semibold text-pine-800 underline" href={l.url} target="_blank" rel="noopener noreferrer">
-                  {l.label || l.url} ↗
-                </a>
-              </li>
-            ))}
-          </ul>
-          <p className="text-xs text-muted">Opens outside My Cadence. Access is controlled by the document&apos;s own sharing settings.</p>
-        </section>
-      )}
       {content.runningGuidance && (
         <section>
           <h3 className="eyebrow mb-1">Running guidance</h3>

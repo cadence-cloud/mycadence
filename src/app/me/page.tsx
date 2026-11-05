@@ -29,7 +29,7 @@ export default async function PatientHome() {
       <div className="space-y-5">
         <h1 className="text-2xl font-semibold">Hi {patient!.firstName}</h1>
         <EmptyState title="Your plan will appear here" body="After your visit, your PT will publish your exercises, running guidance and next steps here." />
-        <QuickAsk firstName={primary?.name.split(" ")[0]} settings={settings} />
+        <QuickAsk ptName={primary?.name} settings={settings} />
       </div>
     );
   }
@@ -77,20 +77,10 @@ export default async function PatientHome() {
 
       <Card>
         <Tracker groups={groups} entries={entries} dates={dates} />
-        {c.links.length > 0 && (
-          <div className="mt-4 border-t border-sand-200 pt-3">
-            {c.links.map((l) => (
-              <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center font-semibold text-pine-800 underline">
-                {l.label || "Open link"} ↗
-              </a>
-            ))}
-            <p className="text-xs text-muted">Opens outside My Cadence.</p>
-          </div>
-        )}
       </Card>
 
       <Card>
-        <p className="eyebrow">Latest update from {current.publishedByName.split(" ")[0]}</p>
+        <p className="eyebrow">Latest update from {current.publishedByName}</p>
         <p className="mt-1 text-sm text-muted">{formatDateTime(current.publishedAt)}</p>
         {c.recap && <p className="mt-2 whitespace-pre-line text-[15px] leading-relaxed">{c.recap}</p>}
         {current.changeSummary && versions.length > 1 && (
@@ -122,16 +112,16 @@ export default async function PatientHome() {
         </Card>
       )}
 
-      <QuickAsk firstName={primary?.name.split(" ")[0]} settings={settings} />
+      <QuickAsk ptName={primary?.name} settings={settings} />
     </div>
   );
 }
 
-function QuickAsk({ firstName, settings }: { firstName?: string; settings: { responseExpectation: string; urgentGuidance: string } }) {
+function QuickAsk({ ptName, settings }: { ptName?: string; settings: { responseExpectation: string; urgentGuidance: string } }) {
   return (
     <Card>
       <p className="eyebrow">Questions or feedback?</p>
-      <p className="mb-2 mt-1 text-[15px]">Send a message to {firstName ? `${firstName} and your care team` : "your care team"}.</p>
+      <p className="mb-2 mt-1 text-[15px]">Send a message to {ptName ? `${ptName} and your care team` : "your care team"}.</p>
       <MessageForm action={patientSendMessage} hidden={{}} placeholder="Ask a question or tell us how things are going" />
       <p className="mt-2 text-sm text-muted">{settings.responseExpectation}</p>
       <p className="mt-1 text-sm text-muted">{settings.urgentGuidance}</p>

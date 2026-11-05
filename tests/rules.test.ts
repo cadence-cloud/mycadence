@@ -53,8 +53,9 @@ describe("rules extraction — Alex Morgan sample", () => {
     expect(r.content.runningGuidance).not.toContain("strides");
   });
 
-  it("flags the strength circuits reference that has no link", () => {
-    expect(r.flags.some((f) => f.id === "strength-link-missing")).toBe(true);
+  it("flags the strength circuits reference so the circuit lives in the plan", () => {
+    expect(r.flags.some((f) => f.id === "strength-circuits-ref")).toBe(true);
+    expect(r.content.links).toEqual([]);
   });
 });
 
@@ -67,9 +68,10 @@ describe("parseDosage", () => {
   });
 });
 
-it("extracts links and labels strength docs", () => {
+it("never carries external links into the plan; flags them instead", () => {
   const r = extractWithRules("Your strength circuits: https://docs.google.com/document/d/abc123/edit\n\n- Clamshells — 2 x 15 each side, daily");
-  expect(r.content.links).toEqual([{ label: "Strength circuits", url: "https://docs.google.com/document/d/abc123/edit" }]);
+  expect(r.content.links).toEqual([]);
+  expect(r.flags.find((f) => f.id === "external-links")?.source).toContain("docs.google.com");
   expect(r.content.items[0]).toMatchObject({ name: "Clamshells", frequency: "daily", dosage: { sets: 2, reps: 15, perSide: true } });
 });
 
@@ -78,4 +80,16 @@ it("diff ignores key order and null vs missing", () => {
   const base = { recap: "", runningGuidance: "a", nextMilestone: "", reassessNext: "", links: [], items: [{ key: "k", name: "Rows", dosage: { sets: 3, reps: 15 }, frequency: null }] };
   const next = { ...base, items: [{ key: "k", name: "Rows", dosage: { reps: 15, sets: 3, repsUnit: null, note: null }, scheduleDays: null }] };
   expect(diffPlans(base, next)).toEqual({ added: [], removed: [], changed: [], runningChanged: false });
+});
+
+import { addressOf, replyTokenFrom, stripQuoted } from "@/lib/email-reply";
+describe("email replies", () => {
+  it("finds the token and address", () => {
+    expect(replyTokenFrom("Cadence <reply+0123456789abcdef01234567@reply.njcadencept.com>")).toBe("0123456789abcdef01234567");
+    expect(addressOf("Alex Morgan <Alex@Example.com>")).toBe("alex@example.com");
+  });
+  it("keeps only the new text", () => {
+    expect(stripQuoted("Sounds good, thanks!\n\nOn Tue, Nov 4, 2026 at 9:12 AM Cadence <x@y.com> wrote:\n> You have a new update")).toBe("Sounds good, thanks!");
+    expect(stripQuoted("Quick question about rows.\n\nSent from my iPhone")).toBe("Quick question about rows.");
+  });
 });

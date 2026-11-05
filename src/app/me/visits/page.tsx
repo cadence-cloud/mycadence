@@ -26,7 +26,7 @@ export default async function MyVisits() {
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h2 className="text-lg font-semibold">{formatDate(v.visitDate, { weekday: "long", month: "long", day: "numeric" })}</h2>
-                <p className="text-sm text-muted">With {v.ptName}{v.ptCredentials ? `, ${v.ptCredentials}` : ""}</p>
+                <p className="text-sm text-muted">With {v.ptName}</p>
               </div>
               {vv.length > 0 && <Badge tone="green">Plan updated</Badge>}
             </div>

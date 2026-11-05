@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import { createDb, type Db } from "./client";
 import * as s from "./schema";
 import { newId } from "@/lib/ids";
-import { addDays, localDate } from "@/lib/time";
+import { addDays, clinicDateTime, localDate } from "@/lib/time";
 import { hashPassword } from "@/server/passwords";
 import { createDraft, ensureVisit, publishDraft, saveDraft } from "@/server/plans";
 import { sendMessage, threadFor, markRead } from "@/server/messaging";
@@ -38,14 +38,14 @@ export async function seed(db: Db) {
   const pw = await hashPassword(DEMO_PASSWORD);
 
   // ---- Staff -------------------------------------------------------------
-  const mkUser = async (name: string, email: string, role: "admin" | "pt" | "patient", credentials: string | null = null) => {
+  const mkUser = async (name: string, email: string, role: "admin" | "pt" | "patient", credentials: string | null = null, displayName: string | null = null) => {
     const id = newId();
-    await db.insert(s.users).values({ id, name, email, role, credentials, passwordHash: pw, isDemo: true });
+    await db.insert(s.users).values({ id, name, displayName, email, role, credentials, passwordHash: pw, isDemo: true });
     return id;
   };
   const michael = await mkUser("Michael Pappalardo", "michael@demo.cadence.test", "admin");
-  const megan = await mkUser("Megan Flynn", "megan@demo.cadence.test", "pt", "DPT");
-  const giana = await mkUser("Giana", "giana@demo.cadence.test", "pt");
+  const megan = await mkUser("Megan Pappalardo", "megan@demo.cadence.test", "pt", "DPT", "Dr. Meg");
+  const giana = await mkUser("Giana", "giana@demo.cadence.test", "pt", "DPT", "Dr. Giana");
 
   // ---- Measures -----------------------------------------------------------
   const defs = {
@@ -181,18 +181,24 @@ export async function seed(db: Db) {
     runningGuidance: "Hold running for now. Walk or bike on any day you'd normally run.",
     nextMilestone: "Ten minutes of walk-run intervals with no arch pain the next morning.",
     reassessNext: "Recheck single-leg heel raises and balance.",
-    links: [{ label: "Strength circuits (Google Doc)", url: "https://docs.google.com/document/d/demo-alex-strength-circuits/edit" }],
+    links: [],
   });
   // A visit with no plan change: counted as a visit, no new plan version.
   await ensureVisit(db, megan, alex.id, d(-16), megan);
   const rows = item("Rows", { dosage: { sets: 3, reps: 15 }, cues: "Squeeze shoulder blades back and together.", isNew: true });
+  // Strength circuits live in the plan (this replaces the old Google Doc).
+  const circuit = [
+    item("Single-leg Romanian deadlift", { circuit: "Strength circuit", dosage: { sets: 3, reps: 8, perSide: true }, frequency: "2x/week", isNew: true }),
+    item("Split squat", { circuit: "Strength circuit", dosage: { sets: 3, reps: 10, perSide: true }, frequency: "2x/week", isNew: true }),
+    item("Side plank", { circuit: "Strength circuit", dosage: { sets: 3, holdSec: 30, perSide: true }, frequency: "2x/week", isNew: true }),
+  ];
   const v2 = await publish(megan, alex.id, d(-9), {
     recap: "Arch domes look much better in standing. We added relevé walks and rows, and you're cleared by me to start easy runs as below.",
-    items: [toe, dome, { ...releve, isNew: true }, rows, hip],
+    items: [toe, dome, { ...releve, isNew: true }, rows, hip, ...circuit],
     runningGuidance: "Run every other day, 15–20 minutes at an easy pace. Strength training or cross-training on the other days.",
     nextMilestone: "Run 20 minutes continuously with no arch pain the next morning.",
     reassessNext: "Recheck heel raises and how the easy runs are feeling.",
-    links: [{ label: "Strength circuits (Google Doc)", url: "https://docs.google.com/document/d/demo-alex-strength-circuits/edit" }],
+    links: [],
   });
   // Most recent visit (2 days ago) exists but its update hasn't been written yet —
   // the demo "Paste existing instructions" flow uses the sample email here.
@@ -226,7 +232,7 @@ export async function seed(db: Db) {
 
   // Messages (seeded = simulated)
   const thread = await threadFor(db, alex.id);
-  await sendMessage(db, { id: megan, role: "pt" }, alex.id, "Hi Alex — your updated plan is posted. Relevé walks and rows are new this week. Reply here with any questions.", { simulated: true });
+  await sendMessage(db, { id: megan, role: "pt" }, alex.id, "Hi Alex — your updated plan is posted. Relevé walks, rows and your strength circuit are new this week. Reply here with any questions.", { simulated: true });
   await db.update(s.messages).set({ createdAt: new Date(Date.now() - 9 * 86400_000) }).where(eq(s.messages.threadId, thread.id));
   await sendMessage(db, { id: alex.userId, role: "patient" }, alex.id, "Thanks! Quick one — for relevé walks, is 12 steps each direction forward and back, or side to side?", { simulated: true });
   await db.update(s.messages).set({ createdAt: new Date(Date.now() - 1 * 86400_000) }).where(eq(s.messages.body, "Thanks! Quick one — for relevé walks, is 12 steps each direction forward and back, or side to side?"));
@@ -301,6 +307,62 @@ export async function seed(db: Db) {
     reassessNext: "Hip extension range and brick-run response.",
     links: [],
   });
+
+  // ---- Bookings (simulated Calendly) ----------------------------------------
+  // Past visits came from bookings; upcoming ones show on the PT dashboard.
+  const allVisits = await db.select().from(s.visits);
+  for (const v of allVisits) {
+    const [p] = await db.select().from(s.patients).where(eq(s.patients.id, v.patientId));
+    const apptId = newId();
+    await db.insert(s.appointments).values({ id: apptId, source: "calendly", externalId: `demo-${apptId}`, patientId: v.patientId, ptUserId: v.ptUserId, inviteeName: `${p.firstName} ${p.lastName}`, inviteeEmail: p.email!, eventName: "Follow-up visit (60 min)", startsAt: clinicDateTime(v.visitDate, "08:00"), status: "scheduled", visitId: v.id, simulated: true });
+    await db.update(s.visits).set({ source: "booking", appointmentId: apptId }).where(eq(s.visits.id, v.id));
+  }
+  const book = async (patientEmail: string, name: string, ptId: string, day: number, hhmm: string, eventName = "Follow-up visit (60 min)") => {
+    const [p] = await db.select().from(s.patients).where(eq(s.patients.email, patientEmail));
+    const id = newId();
+    await db.insert(s.appointments).values({ id, source: "calendly", externalId: `demo-${id}`, patientId: p?.id ?? null, ptUserId: ptId, inviteeName: name, inviteeEmail: patientEmail, eventName, startsAt: clinicDateTime(d(day), hhmm), status: "scheduled", simulated: true });
+  };
+  await book("alex@demo.cadence.test", "Alex Morgan", megan, 3, "07:30");
+  await book("sam@demo.cadence.test", "Sam Rivera", megan, 1, "12:00");
+  await book("jordan@demo.cadence.test", "Jordan Lee", giana, 2, "17:30");
+  await book("priya@demo.cadence.test", "Priya Shah", megan, 5, "09:00");
+  await book("taylor@demo.cadence.test", "Taylor Brooks", giana, 1, "15:30", "Initial evaluation (75 min)");
+  // A booking whose email doesn't match any patient yet: waits in the admin queue.
+  await book("chris.patel@demo.cadence.test", "Chris Patel", megan, 2, "08:00", "Initial evaluation (75 min)");
+  // Booked earlier today, start time already passed: becomes a visit automatically on next load.
+  {
+    const id = newId();
+    await db.insert(s.appointments).values({ id, source: "calendly", externalId: `demo-${id}`, patientId: priya.id, ptUserId: megan, inviteeName: "Priya Shah", inviteeEmail: "priya@demo.cadence.test", eventName: "Follow-up visit (60 min)", startsAt: new Date(Date.now() - 90 * 60_000), status: "scheduled", simulated: true });
+  }
+
+  // ---- A realistic roster: ~50 more fictional patients ------------------------
+  const FIRST = ["Avery", "Blake", "Casey", "Dana", "Elliot", "Frankie", "Gray", "Harper", "Indy", "Jamie", "Kai", "Logan", "Morgan", "Noel", "Oakley", "Parker", "Quinn", "Reese", "Skyler", "Tatum", "Umi", "Val", "Wren", "Xen", "Yael", "Zion"];
+  const LAST = ["Abbott", "Bishop", "Castillo", "Donovan", "Ellis", "Fischer", "Garza", "Hayes", "Ingram", "Jensen", "Kim", "Lambert", "Mendez", "Nolan", "Ortiz", "Pierce", "Quintero", "Rhodes", "Santos", "Tran"];
+  const SPORTS = ["Road running · marathon", "Road running · 10K", "Trail running", "Triathlon", "Track · 1500m", "Ultramarathon", "Masters running", "Cross country"];
+  for (let i = 0; i < 52; i++) {
+    const first = FIRST[i % FIRST.length];
+    const last = LAST[(i * 7) % LAST.length];
+    const email = `${first}.${last}.${i}@demo.cadence.test`.toLowerCase();
+    const pt = i % 3 === 0 ? giana : megan;
+    const userId = newId();
+    const pid = newId();
+    await db.insert(s.users).values({ id: userId, name: `${first} ${last}`, email, role: "patient", passwordHash: pw, isDemo: true });
+    await db.insert(s.patients).values({ id: pid, userId, firstName: first, lastName: last, email, sport: SPORTS[i % SPORTS.length], isDemo: true });
+    await db.insert(s.careAssignments).values({ id: newId(), patientId: pid, staffUserId: pt, role: "primary", createdBy: michael, startedAt: new Date(Date.now() - 200 * 86400_000) });
+    if (i % 5 === 0) await db.insert(s.careAssignments).values({ id: newId(), patientId: pid, staffUserId: pt === megan ? giana : megan, role: "covering", createdBy: michael });
+    await threadFor(db, pid);
+    // 1–3 past visits spread over the last ~4 months; some patients are inactive.
+    const nVisits = 1 + (i % 3);
+    for (let k = 0; k < nVisits; k++) {
+      const day = -((i * 5 + k * 13) % 120) - 1;
+      const vid = newId();
+      const apptId = newId();
+      const ok = await db.insert(s.visits).values({ id: vid, patientId: pid, ptUserId: pt, visitDate: d(day), source: "booking", appointmentId: apptId, createdBy: pt }).onConflictDoNothing().returning();
+      if (!ok.length) continue;
+      await db.insert(s.appointments).values({ id: apptId, source: "calendly", externalId: `demo-${apptId}`, patientId: pid, ptUserId: pt, inviteeName: `${first} ${last}`, inviteeEmail: email, eventName: "Follow-up visit (60 min)", startsAt: clinicDateTime(d(day), "10:00"), status: "scheduled", visitId: vid, simulated: true });
+    }
+    if (i % 4 === 0) await book(email, `${first} ${last}`, pt, 1 + (i % 6), ["07:00", "09:30", "11:00", "13:30", "16:00", "18:00"][i % 6]);
+  }
 }
 
 if (process.argv[1]?.endsWith("seed.ts")) main().catch((e) => {

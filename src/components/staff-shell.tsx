@@ -22,7 +22,7 @@ export function StaffShell({ user, children, nav }: { user: AuthUser; children: 
           <form action="/logout" method="post" className="flex items-center gap-3">
             <span className="hidden text-sm text-white/80 md:inline">
               {user.name}
-              {user.credentials ? `, ${user.credentials}` : ""}
+              
             </span>
             <button className="min-h-11 rounded-lg px-3 text-sm font-medium text-white/80 hover:bg-white/10">Sign out</button>
           </form>

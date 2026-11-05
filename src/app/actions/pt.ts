@@ -8,6 +8,8 @@ import { checkIns, measureDefinitions, measureEntries, milestones, patientMeasur
 import { requireApiUser } from "@/server/session";
 import { assertPatientAccess, AuthzError, careTeam } from "@/server/authz";
 import { createCorrectionDraft, createDraft, discardDraft, ensureVisit } from "@/server/plans";
+import { cancelAppointment } from "@/server/scheduling";
+import { appointments } from "@/db/schema";
 import { sendMessage } from "@/server/messaging";
 import { audit } from "@/server/audit";
 import { newId } from "@/lib/ids";
@@ -49,6 +51,19 @@ export async function startVisitUpdate(form: FormData) {
     start === "template" ? { kind: "template", templateId: String(form.get("templateId")) } : start === "blank" ? { kind: "blank" } : start === "paste" ? { kind: "paste" } : { kind: "current_plan" },
   );
   redirect(`/pt/patients/${patientId}/update/${draft.id}${start === "paste" ? "?step=paste" : ""}`);
+}
+
+/** "Didn't happen": records a no-show and removes the auto-created visit if nothing was added to it. */
+export async function markNoShow(_: unknown, form: FormData): Promise<{ error?: string; ok?: boolean }> {
+  const patientId = String(form.get("patientId"));
+  const { user, db } = await ptFor(patientId);
+  const id = String(form.get("appointmentId"));
+  const [a] = await db.select({ patientId: appointments.patientId }).from(appointments).where(eq(appointments.id, id)).limit(1);
+  if (a?.patientId !== patientId) throw new AuthzError();
+  const r = await cancelAppointment(db, user.id, id, "no_show");
+  if (!r.ok) return { error: r.message };
+  revalidatePath(`/pt/patients/${patientId}`);
+  return { ok: true };
 }
 
 export async function startCorrection(form: FormData) {

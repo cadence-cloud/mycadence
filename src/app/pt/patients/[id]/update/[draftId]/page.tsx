@@ -1,3 +1,4 @@
+import { shownName } from "@/server/names";
 import { notFound, redirect } from "next/navigation";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -25,7 +26,7 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
   }
   if (draft.status === "discarded") redirect(`/pt/patients/${id}`);
   const patient = (await getPatient(db, id))!;
-  const [visit] = draft.visitId ? await db.select({ id: visits.id, visitDate: visits.visitDate, ptName: users.name }).from(visits).innerJoin(users, eq(users.id, visits.ptUserId)).where(eq(visits.id, draft.visitId)).limit(1) : [];
+  const [visit] = draft.visitId ? await db.select({ id: visits.id, visitDate: visits.visitDate, ptName: shownName }).from(visits).innerJoin(users, eq(users.id, visits.ptUserId)).where(eq(visits.id, draft.visitId)).limit(1) : [];
   const base = draft.basePlanVersionId ? (await db.select().from(planVersions).where(eq(planVersions.id, draft.basePlanVersionId)).limit(1))[0] : null;
   const latest = await currentVersion(db, id);
   const library = await db.select({ id: exercises.id, name: exercises.name, description: exercises.description, bodyRegion: exercises.bodyRegion }).from(exercises).where(isNull(exercises.archivedAt)).orderBy(exercises.name);
@@ -33,7 +34,7 @@ export default async function DraftPage({ params, searchParams }: { params: Prom
     .select({ id: media.id, title: media.title, mimeType: media.mimeType, planItemKey: media.planItemKey, draftId: media.draftId, visitId: media.visitId, category: media.category })
     .from(media)
     .where(and(eq(media.patientId, id), eq(media.status, "ready"), isNull(media.deletedAt), or(eq(media.draftId, draftId), draft.visitId ? eq(media.visitId, draft.visitId) : eq(media.category, "patient_footage"))));
-  const [editor] = draft.lastEditedBy ? await db.select({ name: users.name }).from(users).where(eq(users.id, draft.lastEditedBy)).limit(1) : [];
+  const [editor] = draft.lastEditedBy ? await db.select({ name: shownName }).from(users).where(eq(users.id, draft.lastEditedBy)).limit(1) : [];
   const ai = aiAvailability();
 
   return (

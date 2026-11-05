@@ -18,14 +18,17 @@ import {
 } from "@/server/patient-data";
 import { listMessages, markRead, threadFor } from "@/server/messaging";
 import { getSettings } from "@/server/settings";
-import { addMeasureEntry, markMilestone, ptSendMessage, reviewCheckIn, startCorrection, toggleMeasure } from "@/app/actions/pt";
+import { addMeasureEntry, markMilestone, markNoShow, ptSendMessage, reviewCheckIn, startCorrection, toggleMeasure } from "@/app/actions/pt";
+import { materializeVisits } from "@/server/scheduling";
+import { appointments } from "@/db/schema";
+import { and as andOp, asc, eq as eqOp, gt } from "drizzle-orm";
 import { Avatar, Badge, Card, EmptyState, Notice, SectionHeader, SourceTag } from "@/components/ui";
 import { ChangeSummary, PlanFull } from "@/components/plan-view";
 import { MediaTile } from "@/components/media-tile";
 import { MediaUploader } from "@/components/media-uploader";
 import { MessageThread } from "@/components/message-thread";
 import { ActionForm, MessageForm, SubmitButton } from "@/components/forms";
-import { addDays, formatDate, formatDateTime, localDate } from "@/lib/time";
+import { addDays, formatDate, formatDateTime, formatTime, localDate } from "@/lib/time";
 import { MeasureChart } from "@/components/measure-chart";
 
 const TABS = [
@@ -47,6 +50,8 @@ export default async function PatientWorkspace({ params, searchParams }: { param
   if (!(await canAccessPatient(db, user, id))) notFound();
   const patient = await getPatient(db, id);
   if (!patient) notFound();
+  await materializeVisits(db);
+  const upcomingAppts = await db.select().from(appointments).where(andOp(eqOp(appointments.patientId, id), eqOp(appointments.status, "scheduled"), gt(appointments.startsAt, new Date()))).orderBy(asc(appointments.startsAt)).limit(3);
 
   const [team, versions, drafts, goals, milestones] = await Promise.all([careTeam(db, id), getVersions(db, id), getOpenDrafts(db, id), getGoals(db, id), getMilestones(db, id)]);
   const current = versions[0] ?? null;
@@ -115,12 +120,27 @@ export default async function PatientWorkspace({ params, searchParams }: { param
               </Card>
             )}
             <Card>
+              <SectionHeader title="Upcoming appointments" eyebrow="From Calendly" />
+              {upcomingAppts.length === 0 ? (
+                <p className="text-sm text-muted">Nothing booked.</p>
+              ) : (
+                <ul className="space-y-1.5 text-[15px]">
+                  {upcomingAppts.map((a) => (
+                    <li key={a.id} className="flex flex-wrap justify-between gap-2">
+                      <span className="font-semibold">{formatDate(localDate(a.startsAt), { weekday: "short", month: "short", day: "numeric" })} · {formatTime(a.startsAt)}</span>
+                      <span className="text-muted">{a.eventName}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+            <Card>
               <SectionHeader title="Care team" />
               <ul className="space-y-2">
                 {team.map((t) => (
                   <li key={t.userId} className="flex items-center gap-2">
                     <Avatar name={t.name} size={32} />
-                    <span className="flex-1">{t.name}{t.credentials ? `, ${t.credentials}` : ""}</span>
+                    <span className="flex-1">{t.name}</span>
                     <Badge tone={t.role === "primary" ? "green" : "neutral"}>{t.role === "primary" ? "Primary" : "Covering"}</Badge>
                   </li>
                 ))}
@@ -226,7 +246,7 @@ async function VisitsTab({ patientId, versions }: { patientId: string; versions:
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted">{visits.length} visit{visits.length === 1 ? "" : "s"} recorded in My Cadence. Visits are only created when you write an update; they are not synced from WebPT.</p>
+        <p className="text-sm text-muted">{visits.length} visit{visits.length === 1 ? "" : "s"}. Booked appointments become visits automatically once their start time passes. Clinical notes stay in WebPT.</p>
         <Link href={`/pt/patients/${patientId}/update/new`} className="btn-secondary">New visit update</Link>
       </div>
       {visits.length === 0 && <EmptyState title="No visits yet" />}
@@ -238,9 +258,10 @@ async function VisitsTab({ patientId, versions }: { patientId: string; versions:
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h3 className="text-lg font-semibold">{formatDate(v.visitDate, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</h3>
-                <p className="text-sm text-muted">Treating PT: {v.ptName}{v.ptCredentials ? `, ${v.ptCredentials}` : ""}</p>
+                <p className="text-sm text-muted">Treating PT: {v.ptName}</p>
               </div>
               <div className="flex flex-wrap gap-1">
+                {v.source === "booking" && <Badge tone="blue">From booking</Badge>}
                 {vv.length === 0 ? <Badge tone="neutral">No plan published</Badge> : vv.map((x) => <Badge key={x.id} tone="green">Plan v{x.versionNumber}</Badge>)}
               </div>
             </div>
@@ -256,6 +277,13 @@ async function VisitsTab({ patientId, versions }: { patientId: string; versions:
                   <input type="hidden" name="visitId" value={v.id} />
                   <button className="btn-secondary btn-sm">Write update for this visit</button>
                 </form>
+              )}
+              {vv.length === 0 && vm.length === 0 && v.source === "booking" && v.appointmentId && (
+                <ActionForm action={markNoShow} className="flex flex-wrap items-center gap-2" okText="Marked as didn't happen.">
+                  <input type="hidden" name="patientId" value={patientId} />
+                  <input type="hidden" name="appointmentId" value={v.appointmentId} />
+                  <SubmitButton className="btn-ghost btn-sm" pendingText="…">Didn&apos;t happen (no-show / late cancel)</SubmitButton>
+                </ActionForm>
               )}
             </div>
             <details className="mt-3">
@@ -374,7 +402,7 @@ async function ProgressTab({ patientId }: { patientId: string }) {
                         <tr key={r.e.id} className="border-t border-sand-200">
                           <td className="py-1.5">{formatDate(r.e.recordedOn, { month: "short", day: "numeric" })}</td>
                           <td className="font-semibold">{Number(r.e.value)} {d.unit}</td>
-                          <td>{r.e.source === "pt" ? `PT (${r.enteredByName.split(" ")[0]})` : "Patient"}</td>
+                          <td>{r.e.source === "pt" ? r.enteredByName : "Patient"}</td>
                           <td className="text-muted">{r.e.note}</td>
                         </tr>
                       ))}

@@ -35,11 +35,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const b = keyMap.get(i.key);
     return b ? { ...i, key: b.key, patientMediaId: b.patientMediaId ?? null } : i;
   });
-  const content = { ...result.content, items };
-  const remapped = result.flags.map((f) => {
+  let remapped = result.flags.map((f) => {
     const b = f.itemKey ? keyMap.get(f.itemKey) : undefined;
     return b ? { ...f, itemKey: b.key, id: f.id.replace(f.itemKey!, b.key) } : f;
   });
+  // "See your strength circuits": the circuit already lives in the current plan,
+  // so keep those published exercises (unchanged) rather than dropping them.
+  const ref = remapped.find((f) => f.id === "strength-circuits-ref");
+  const baseCircuit = (base?.content.items ?? []).filter((b) => b.circuit && !items.some((i) => i.key === b.key));
+  if (ref && baseCircuit.length) {
+    items.push(...baseCircuit.map((b) => ({ ...b, isNew: false })));
+    remapped = remapped.map((f) =>
+      f.id === "strength-circuits-ref"
+        ? { ...f, severity: "check" as const, message: `The email refers to strength circuits, so the ${baseCircuit.length} circuit exercise${baseCircuit.length > 1 ? "s" : ""} from version ${base!.versionNumber} (${[...new Set(baseCircuit.map((b) => b.circuit))].join(", ")}) were kept unchanged. Edit or remove them if that's not right.` }
+        : f,
+    );
+  }
+  const content = { ...result.content, items };
   const flags = mergeFlags(content, remapped);
   const [updated] = await db
     .update(planDrafts)

@@ -93,3 +93,49 @@ describe("visit updates", () => {
     expect(again.content.items.length).toBe(t.content.items.length);
   });
 });
+
+import { appointments } from "@/db/schema";
+import { cancelAppointment, materializeVisits, upsertBooking } from "@/server/scheduling";
+import { processInboundEmail } from "@/server/inbound-email";
+import { replyAddress, threadReplyToken } from "@/server/email";
+import { threadFor } from "@/server/messaging";
+
+describe("scheduling sync", () => {
+  it("matches by email, creates a visit when the time passes, and is idempotent", async () => {
+    const jordan = await patient("Jordan");
+    const before = (await db.select().from(s.visits).where(eq(s.visits.patientId, jordan.id))).length;
+    const start = new Date(Date.now() - 30 * 60_000);
+    const input = { source: "calendly" as const, externalId: "https://api.calendly.com/x/invitees/T1", status: "scheduled" as const, inviteeName: "Jordan Lee", inviteeEmail: "JORDAN@demo.cadence.test", startsAt: start, hostEmails: ["giana@demo.cadence.test"] };
+    const a = await upsertBooking(db, input);
+    const b = await upsertBooking(db, input);
+    expect(a.id).toBe(b.id);
+    await materializeVisits(db);
+    const [appt] = await db.select().from(appointments).where(eq(appointments.id, a.id));
+    expect(appt.patientId).toBe(jordan.id);
+    expect(appt.visitId).toBeTruthy();
+    const after = await db.select().from(s.visits).where(eq(s.visits.patientId, jordan.id));
+    expect(after.length).toBeLessThanOrEqual(before + 1);
+    // no-show removes the empty auto-created visit
+    const r = await cancelAppointment(db, null, a.id, "no_show");
+    expect(r.ok).toBe(true);
+    expect((await db.select().from(s.visits).where(eq(s.visits.id, appt.visitId!))).length).toBe(0);
+  });
+  it("unknown email waits for an admin", async () => {
+    const r = await upsertBooking(db, { source: "calendly", externalId: "U2", status: "scheduled", inviteeName: "New Person", inviteeEmail: "new.person@example.com", startsAt: new Date(Date.now() + 86400_000) });
+    const [appt] = await db.select().from(appointments).where(eq(appointments.id, r.id));
+    expect(appt.patientId).toBeNull();
+  });
+});
+
+describe("inbound email", () => {
+  it("accepts replies only from the thread's patient or care team", async () => {
+    const alex = await patient("Alex");
+    const thread = await threadFor(db, alex.id);
+    const to = replyAddress(await threadReplyToken(db, thread.id));
+    expect((await processInboundEmail(db, { from: "Alex <alex@demo.cadence.test>", to, text: "Works for me.\n\nOn Mon, Cadence wrote:\n> hi" })).ok).toBe(true);
+    const last = (await db.select().from(s.messages).where(eq(s.messages.threadId, thread.id))).at(-1)!;
+    expect(last.body).toBe("Works for me.");
+    expect(last.via).toBe("email");
+    expect((await processInboundEmail(db, { from: "jordan@demo.cadence.test", to, text: "hi" })).ok).toBe(false);
+  });
+});

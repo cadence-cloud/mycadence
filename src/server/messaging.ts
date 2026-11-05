@@ -1,3 +1,4 @@
+import { shownName } from "@/server/names";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { messageReads, messageThreads, messages, patients, users } from "@/db/schema";
@@ -5,18 +6,13 @@ import { newId } from "@/lib/ids";
 import { audit } from "./audit";
 import { careTeam } from "./authz";
 import { notifyPatient, notifyUser } from "./notify";
+import { threadFor } from "./messaging-thread";
 
-export async function threadFor(db: Db, patientId: string) {
-  const [t] = await db.select().from(messageThreads).where(eq(messageThreads.patientId, patientId)).limit(1);
-  if (t) return t;
-  await db.insert(messageThreads).values({ id: newId(), patientId }).onConflictDoNothing();
-  const [t2] = await db.select().from(messageThreads).where(eq(messageThreads.patientId, patientId)).limit(1);
-  return t2;
-}
+export { threadFor };
 
 export async function listMessages(db: Db, threadId: string) {
   return db
-    .select({ id: messages.id, body: messages.body, createdAt: messages.createdAt, simulated: messages.simulated, senderId: messages.senderId, senderName: users.name, senderRole: users.role, senderCredentials: users.credentials })
+    .select({ id: messages.id, body: messages.body, createdAt: messages.createdAt, simulated: messages.simulated, senderId: messages.senderId, senderName: shownName, via: messages.via, senderRole: users.role, senderCredentials: users.credentials })
     .from(messages)
     .innerJoin(users, eq(users.id, messages.senderId))
     .where(eq(messages.threadId, threadId))
@@ -35,17 +31,17 @@ export async function markRead(db: Db, threadId: string, userId: string) {
  * Send a message in a patient's thread. Caller must have authorized the sender
  * for this patient. Notifications go ONLY to the patient or their active care team.
  */
-export async function sendMessage(db: Db, sender: { id: string; role: string }, patientId: string, body: string, opts: { simulated?: boolean } = {}) {
+export async function sendMessage(db: Db, sender: { id: string; role: string }, patientId: string, body: string, opts: { simulated?: boolean; via?: "app" | "email" } = {}) {
   const text = body.trim();
   if (!text) throw new Error("Message is empty");
   if (text.length > 5000) throw new Error("Message is too long (5,000 characters max)");
   const thread = await threadFor(db, patientId);
   const id = newId();
-  await db.insert(messages).values({ id, threadId: thread.id, senderId: sender.id, body: text, simulated: !!opts.simulated });
+  await db.insert(messages).values({ id, threadId: thread.id, senderId: sender.id, body: text, simulated: !!opts.simulated, via: opts.via ?? "app" });
   await markRead(db, thread.id, sender.id);
-  await audit(db, { actorId: sender.id, action: "message.send", entityType: "message", entityId: id, patientId });
+  await audit(db, { actorId: sender.id, action: "message.send", entityType: "message", entityId: id, patientId, meta: { via: opts.via ?? "app" } });
   if (sender.role === "patient") {
-    for (const m of await careTeam(db, patientId)) await notifyUser(db, m.userId, "new_message", `/pt/patients/${patientId}?tab=messages`);
+    for (const m of await careTeam(db, patientId)) await notifyUser(db, m.userId, "new_message", `/pt/patients/${patientId}?tab=messages`, { patientId });
   } else {
     await notifyPatient(db, patientId, "new_message");
   }

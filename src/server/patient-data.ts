@@ -2,6 +2,7 @@
  * Read models for a single patient. Callers MUST authorize first.
  * `audience: "patient"` returns only published / patient-visible data.
  */
+import { shownName } from "@/server/names";
 import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import {
@@ -36,7 +37,7 @@ export async function getVersions(db: Db, patientId: string) {
       content: planVersions.content,
       changeSummary: planVersions.changeSummary,
       publishedAt: planVersions.publishedAt,
-      publishedByName: users.name,
+      publishedByName: shownName,
       correctionOfVersionId: planVersions.correctionOfVersionId,
       correctionNote: planVersions.correctionNote,
     })
@@ -48,7 +49,7 @@ export async function getVersions(db: Db, patientId: string) {
 
 export async function getVisits(db: Db, patientId: string) {
   return db
-    .select({ id: visits.id, visitDate: visits.visitDate, kind: visits.kind, ptName: users.name, ptCredentials: users.credentials })
+    .select({ id: visits.id, visitDate: visits.visitDate, kind: visits.kind, source: visits.source, appointmentId: visits.appointmentId, ptName: shownName, ptCredentials: users.credentials })
     .from(visits)
     .innerJoin(users, eq(users.id, visits.ptUserId))
     .where(eq(visits.patientId, patientId))
@@ -79,7 +80,7 @@ export async function getMedia(db: Db, patientId: string, audience: "staff" | "p
 
 export async function getCheckIns(db: Db, patientId: string) {
   return db
-    .select({ c: checkIns, versionNumber: planVersions.versionNumber, reviewedByName: users.name })
+    .select({ c: checkIns, versionNumber: planVersions.versionNumber, reviewedByName: shownName })
     .from(checkIns)
     .leftJoin(planVersions, eq(planVersions.id, checkIns.planVersionId))
     .leftJoin(users, eq(users.id, checkIns.reviewedBy))
@@ -109,7 +110,7 @@ export async function getMeasures(db: Db, patientId: string) {
     .innerJoin(measureDefinitions, eq(measureDefinitions.id, patientMeasures.definitionId))
     .where(eq(patientMeasures.patientId, patientId));
   const entries = await db
-    .select({ e: measureEntries, enteredByName: users.name })
+    .select({ e: measureEntries, enteredByName: shownName })
     .from(measureEntries)
     .innerJoin(users, eq(users.id, measureEntries.enteredBy))
     .where(eq(measureEntries.patientId, patientId))

@@ -121,3 +121,66 @@ export async function saveSettings(_: unknown, form: FormData): Promise<R> {
   revalidatePath("/admin");
   return { ok: true };
 }
+
+// ---- Integrations --------------------------------------------------------------
+import { patients as patientsTable } from "@/db/schema";
+import { createPatientFromBooking, linkBookingToPatient, upsertBooking } from "@/server/scheduling";
+import { processInboundEmail } from "@/server/inbound-email";
+import { replyAddress, threadReplyToken } from "@/server/email";
+import { threadFor as threadForPatient } from "@/server/messaging-thread";
+import { clinicDateTime } from "@/lib/time";
+
+export async function linkBooking(_: unknown, form: FormData): Promise<R> {
+  const { user, db } = await admin();
+  const patientId = String(form.get("patientId") ?? "");
+  if (!patientId) return { error: "Choose a patient." };
+  try {
+    await linkBookingToPatient(db, user.id, String(form.get("appointmentId")), patientId);
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+export async function newPatientFromBooking(_: unknown, form: FormData): Promise<R> {
+  const { user, db } = await admin();
+  try {
+    await createPatientFromBooking(db, user.id, String(form.get("appointmentId")), { isDemo: isDemo() });
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/** Demo only: runs the same code path a Calendly webhook would. */
+export async function simulateBooking(_: unknown, form: FormData): Promise<R> {
+  const { db } = await admin();
+  if (!isDemo()) return { error: "Simulation is only available in the demo environment." };
+  const v = z
+    .object({ name: z.string().trim().min(1), email: z.string().trim().email(), ptEmail: z.string().email(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), time: z.string().regex(/^\d{2}:\d{2}$/), eventName: z.string().min(1) })
+    .safeParse(Object.fromEntries(form));
+  if (!v.success) return { error: "Fill in name, email, date and time." };
+  await upsertBooking(db, { source: "calendly", externalId: `demo-${newId()}`, status: "scheduled", inviteeName: v.data.name, inviteeEmail: v.data.email, eventName: v.data.eventName, startsAt: clinicDateTime(v.data.date, v.data.time), hostEmails: [v.data.ptEmail], simulated: true });
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/** Demo only: pretend a patient replied to a notification email. */
+export async function simulateEmailReply(_: unknown, form: FormData): Promise<R> {
+  const { db } = await admin();
+  if (!isDemo()) return { error: "Simulation is only available in the demo environment." };
+  const patientId = String(form.get("patientId") ?? "");
+  const text = String(form.get("text") ?? "").trim();
+  if (!patientId || !text) return { error: "Choose a patient and write a reply." };
+  const [p] = await db.select({ email: patientsTable.email }).from(patientsTable).where(eq(patientsTable.id, patientId)).limit(1);
+  if (!p?.email) return { error: "That patient has no email on file." };
+  const thread = await threadForPatient(db, patientId);
+  const token = await threadReplyToken(db, thread.id);
+  const r = await processInboundEmail(db, { from: p.email, to: replyAddress(token), text: `${text}\n\nOn Tue, Cadence <notifications@njcadencept.com> wrote:\n> You have a new update from Cadence` });
+  if (!r.ok) return { error: r.reason };
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
