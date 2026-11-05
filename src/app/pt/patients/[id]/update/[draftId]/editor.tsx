@@ -9,6 +9,7 @@ import { formatDate } from "@/lib/time";
 import { ChangeSummary, PlanFull, frequencyText } from "@/components/plan-view";
 import { MediaUploader } from "@/components/media-uploader";
 import { Badge, Notice } from "@/components/ui";
+import { saveCustomToMyLibrary } from "@/app/actions/library";
 
 type SaveState = { kind: "idle" | "saving" | "saved" | "unsaved" | "offline" | "conflict" | "error"; at?: string; message?: string };
 
@@ -30,7 +31,7 @@ interface Props {
   visit: { id: string; visitDate: string; ptName: string } | null;
   base: { versionNumber: number; content: PlanContent } | null;
   newerVersionNumber: number | null;
-  library: { id: string; name: string; description: string | null; bodyRegion: string | null }[];
+  library: { id: string; name: string; description: string | null; bodyRegion: string | null; mine?: boolean }[];
   media: { id: string; title: string; mimeType: string; planItemKey: string | null; draftId: string | null; visitId: string | null; category: string }[];
   openPaste: boolean;
   extraction: { ai: boolean; reason: string | null; demo: boolean };
@@ -568,7 +569,24 @@ function Secs({ label, id, value, onChange }: { label: string; id: string; value
 
 export function AddExercise({ library, onAdd }: { library: Props["library"]; onAdd: (i: Partial<PlanItem> & { name: string }) => void }) {
   const [q, setQ] = useState("");
-  const results = q.trim() ? library.filter((l) => l.name.toLowerCase().includes(q.trim().toLowerCase()) || (l.bodyRegion ?? "").toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8) : [];
+  const [saveMine, setSaveMine] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const match = (l: Props["library"][number]) => l.name.toLowerCase().includes(q.trim().toLowerCase()) || (l.bodyRegion ?? "").toLowerCase().includes(q.trim().toLowerCase());
+  const results = q.trim() ? [...library.filter((l) => l.mine && match(l)), ...library.filter((l) => !l.mine && match(l))].slice(0, 10) : [];
+  const exact = library.some((l) => l.name.toLowerCase() === q.trim().toLowerCase());
+  async function addCustom() {
+    const name = q.trim();
+    if (!name) return;
+    let exerciseId: string | null = null;
+    if (saveMine) {
+      setBusy(true);
+      const r = await saveCustomToMyLibrary({ name });
+      setBusy(false);
+      exerciseId = r.id ?? null;
+    }
+    onAdd({ name, exerciseId });
+    setQ("");
+  }
   return (
     <div className="mt-3 rounded-xl border border-sand-200 bg-sand-50 p-3">
       <label htmlFor="lib-q" className="label">Add exercise</label>
@@ -579,15 +597,20 @@ export function AddExercise({ library, onAdd }: { library: Props["library"]; onA
             <li key={r.id}>
               <button type="button" className="flex min-h-11 w-full items-center justify-between rounded-lg bg-white px-3 text-left hover:bg-pine-50" onClick={() => { onAdd({ name: r.name, exerciseId: r.id, description: r.description }); setQ(""); }}>
                 <span className="font-medium">{r.name}</span>
-                <span className="text-xs text-muted">{r.bodyRegion}</span>
+                <span className="flex items-center gap-1.5 text-xs text-muted">{r.bodyRegion}{r.mine ? <Badge tone="blue">Your library</Badge> : <Badge tone="neutral">Shared</Badge>}</span>
               </button>
             </li>
           ))}
-          <li>
-            <button type="button" className="flex min-h-11 w-full items-center rounded-lg px-3 text-left font-semibold text-pine-800 hover:bg-pine-50" onClick={() => { onAdd({ name: q.trim(), exerciseId: null }); setQ(""); }}>
-              + Add “{q.trim()}” as a custom exercise for this patient
-            </button>
-          </li>
+          {!exact && (
+            <li className="rounded-lg bg-white p-2">
+              <button type="button" disabled={busy} className="flex min-h-11 w-full items-center rounded-lg px-1 text-left font-semibold text-pine-800 hover:bg-pine-50" onClick={addCustom}>
+                + Add “{q.trim()}” as a new exercise
+              </button>
+              <label className="flex min-h-9 items-center gap-2 px-1 text-sm text-muted">
+                <input type="checkbox" className="size-4 accent-pine-900" checked={saveMine} onChange={(e) => setSaveMine(e.target.checked)} /> Also save it to Your library
+              </label>
+            </li>
+          )}
         </ul>
       )}
     </div>

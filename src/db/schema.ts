@@ -127,6 +127,8 @@ export const exercises = pgTable("exercises", {
   demoMediaId: text("demo_media_id"), // general (non-identifiable) demonstration only
   defaultDosage: jsonb("default_dosage").$type<Record<string, unknown>>(),
   isCustom: boolean("is_custom").notNull().default(false),
+  // null = Shared library (whole clinic). Set = that PT's personal library ("Your library").
+  ownerId: text("owner_id").references(() => users.id),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdBy: text("created_by").references(() => users.id),
   createdAt: createdAt(),

@@ -90,6 +90,16 @@ export async function seed(db: Db) {
     lib[name] = id;
     await db.insert(s.exercises).values({ id, name, description, bodyRegion: region, createdBy: megan });
   }
+  // Personal libraries ("Your library"): visible only to that PT.
+  for (const [owner, name, description, region] of [
+    [megan, "Short-foot walk", "Walk slowly while holding a gentle arch dome.", "Foot"],
+    [megan, "Calf raise ladder", "Heel raises on a step, adding height each round.", "Calf"],
+    [megan, "Hip airplane", "Single-leg hinge, rotate the pelvis open and closed.", "Hip"],
+    [giana, "Banded monster walk", "Band above the knees, small diagonal steps.", "Hip"],
+    [giana, "Spanish squat", "Squat with a heavy band behind the knees, shins vertical.", "Knee"],
+  ] as const) {
+    await db.insert(s.exercises).values({ id: newId(), name, description, bodyRegion: region, isCustom: true, ownerId: owner, createdBy: owner });
+  }
   const item = (name: string, extra: Partial<PlanItem> = {}): PlanItem => ({
     key: newId(),
     exerciseId: lib[name] ?? null,

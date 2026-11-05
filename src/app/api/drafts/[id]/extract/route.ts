@@ -5,6 +5,7 @@ import { exercises, planDrafts, planVersions } from "@/db/schema";
 import { normalizeName } from "@/lib/extract/rules";
 import type { PlanItem } from "@/lib/plan-types";
 import { draftForPt } from "@/server/draft-access";
+import { visibleTo } from "@/server/library";
 import { getProvider, mergeFlags } from "@/server/extraction";
 import { audit } from "@/server/audit";
 
@@ -24,7 +25,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (text.length > 20000) return NextResponse.json({ error: "That's longer than we can process (20,000 characters)." }, { status: 400 });
   if (body.revision !== draft.revision) return NextResponse.json({ error: "This draft changed elsewhere. Reload and try again." }, { status: 409 });
 
-  const library = await db.select({ id: exercises.id, name: exercises.name, description: exercises.description }).from(exercises).where(isNull(exercises.archivedAt));
+  const library = await db.select({ id: exercises.id, name: exercises.name, description: exercises.description }).from(exercises).where(visibleTo(user.id));
   const provider = getProvider();
   const result = await provider.extract(text, library);
   // Match extracted exercises to the plan this draft is based on, so unchanged

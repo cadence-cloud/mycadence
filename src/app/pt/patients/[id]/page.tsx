@@ -68,6 +68,7 @@ export default async function PatientWorkspace({ params, searchParams }: { param
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href={`/pt/library?patient=${id}`} className="btn-secondary">Add from library</Link>
           {drafts[0] ? (
             <Link href={`/pt/patients/${id}/update/${drafts[0].id}`} className="btn-primary">Continue draft update</Link>
           ) : (

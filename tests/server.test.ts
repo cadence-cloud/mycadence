@@ -139,3 +139,34 @@ describe("inbound email", () => {
     expect((await processInboundEmail(db, { from: "jordan@demo.cadence.test", to, text: "hi" })).ok).toBe(false);
   });
 });
+
+import { addExercisesToPatient, visibleExercises } from "@/server/library";
+describe("libraries", () => {
+  it("personal libraries are private; shared is visible to all PTs", async () => {
+    const megan = await u("megan@demo.cadence.test");
+    const giana = await u("giana@demo.cadence.test");
+    const mine = await visibleExercises(db, megan.id);
+    const hers = await visibleExercises(db, giana.id);
+    expect(mine.some((e) => e.name === "Hip airplane")).toBe(true);
+    expect(hers.some((e) => e.name === "Hip airplane")).toBe(false);
+    expect(hers.some((e) => e.name === "Toe yoga")).toBe(true);
+  });
+  it("adds library exercises to the patient's draft without dosage and without duplicates", async () => {
+    const megan = await u("megan@demo.cadence.test");
+    const giana = await u("giana@demo.cadence.test");
+    const sam = await patient("Sam");
+    const lib = await visibleExercises(db, megan.id);
+    const pick = lib.filter((e) => e.name === "Hip airplane" || e.name === "Clamshells").map((e) => e.id);
+    const r1 = await addExercisesToPatient(db, megan.id, sam.id, pick);
+    expect(r1.added).toBe(2);
+    const r2 = await addExercisesToPatient(db, megan.id, sam.id, pick);
+    expect(r2.draftId).toBe(r1.draftId);
+    expect(r2.added).toBe(0);
+    const [d] = await db.select().from(s.planDrafts).where(eq(s.planDrafts.id, r1.draftId));
+    const added = d.content.items.find((i) => i.name === "Hip airplane")!;
+    expect(added.dosage).toEqual({});
+    // Giana can't add Meg's personal exercise
+    const gLib = lib.filter((e) => e.name === "Hip airplane").map((e) => e.id);
+    await expect(addExercisesToPatient(db, giana.id, sam.id, gLib)).rejects.toThrow();
+  });
+});
